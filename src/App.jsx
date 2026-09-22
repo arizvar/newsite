@@ -87,7 +87,7 @@ const PageCanvas = ({
         cornerSize: 12,
         padding: 0,
         borderDashArray: [4, 4],
-        lockUniScaling: false,
+        lockUniScaling: true,
         centeredRotation: true,
         centeredScaling: false,
         touchCornerSize: 44,
@@ -127,7 +127,7 @@ const PageCanvas = ({
     initCanvas.boundaryLock = false;
     initCanvas.angleSnapEnabled = true;
     initCanvas.angleSnapStep = 15;
-    initCanvas.snapThreshold = 7;
+    initCanvas.snapThreshold = 4;
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
     initCanvas.perPixelTargetFind = false;
@@ -373,11 +373,7 @@ const PageCanvas = ({
         if (!target.lockMovementX) target.left += dx * (initCanvas.width / Math.max(1, initCanvas.upperCanvasEl.getBoundingClientRect().width));
         if (!target.lockMovementY) target.top += dy * (initCanvas.height / Math.max(1, initCanvas.upperCanvasEl.getBoundingClientRect().height));
         target.setCoords();
-        if (target.cropEditor) {
-          target.fire('moving', { target });
-        } else {
-          initCanvas.constrainActiveObject?.(target);
-        }
+        if (target.cropEditor) target.fire('moving', { target });
         initCanvas.renderAll();
         return;
       }
@@ -456,7 +452,9 @@ const PageCanvas = ({
           if (mobileTouch.mode === 'scale') target.fire('scaling', { target });
         } else {
           target.setCoords();
-          if (mobileTouch.mode === 'drag') initCanvas.constrainActiveObject?.(target);
+          if (mobileTouch.mode === 'drag' && initCanvas.snapEnabled) {
+            initCanvas.constrainActiveObject?.(target);
+          }
           initCanvas.fire('object:modified', { target });
         }
       }
@@ -588,12 +586,17 @@ const PageCanvas = ({
       let dy = 0;
       const threshold = initCanvas.snapThreshold;
 
-      // Hard boundary lock first.
+      // Optional boundary lock is deliberately soft and symmetric.
+      // If an object is larger than the page, do not pin it to a corner.
       if (initCanvas.boundaryLock) {
-        if (rect.left < 0) dx = -rect.left;
-        if (rect.right > initCanvas.width) dx = initCanvas.width - rect.right;
-        if (rect.top < 0) dy = -rect.top;
-        if (rect.bottom > initCanvas.height) dy = initCanvas.height - rect.bottom;
+        if (rect.width <= initCanvas.width) {
+          if (rect.left < 0) dx = -rect.left;
+          else if (rect.right > initCanvas.width) dx = initCanvas.width - rect.right;
+        }
+        if (rect.height <= initCanvas.height) {
+          if (rect.top < 0) dy = -rect.top;
+          else if (rect.bottom > initCanvas.height) dy = initCanvas.height - rect.bottom;
+        }
       }
 
       if (initCanvas.snapEnabled) {
@@ -774,7 +777,7 @@ const PageCanvas = ({
           originY: 'center',
           scaleX: scale,
           scaleY: scale,
-          lockUniScaling: false,
+          lockUniScaling: true,
           centeredScaling: false,
         });
         initCanvas.add(img);
@@ -840,7 +843,7 @@ const PageCanvas = ({
         originY: 'center',
         scaleX: scale,
         scaleY: scale,
-        lockUniScaling: false,
+        lockUniScaling: true,
         centeredScaling: false,
       });
       canvas.add(img);
@@ -1824,7 +1827,7 @@ export default function App() {
       clipPath: null,
       selectable: true,
       evented: true,
-      lockUniScaling: false,
+      lockUniScaling: true,
     });
 
     // Re-enable normal editor state.
