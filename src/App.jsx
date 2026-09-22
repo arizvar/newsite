@@ -112,6 +112,7 @@ const PageCanvas = ({
       preserveObjectStacking: true,
       selection: true,
       enableRetinaScaling: true,
+      allowTouchScrolling: true,
     });
 
     // Editor-style behaviour settings. These are mutable from the right sidebar.
@@ -123,9 +124,13 @@ const PageCanvas = ({
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
     initCanvas.perPixelTargetFind = false;
-    initCanvas.upperCanvasEl.style.touchAction = 'none';
-    initCanvas.lowerCanvasEl.style.touchAction = 'none';
-    initCanvas.wrapperEl.style.touchAction = 'none';
+    const setCanvasTouchMode = (selected = false) => {
+      const touchAction = selected ? 'none' : 'auto';
+      initCanvas.upperCanvasEl.style.touchAction = touchAction;
+      initCanvas.lowerCanvasEl.style.touchAction = touchAction;
+      initCanvas.wrapperEl.style.touchAction = touchAction;
+    };
+    setCanvasTouchMode(false);
 
     registerCanvas(page.id, initCanvas);
 
@@ -369,9 +374,18 @@ const PageCanvas = ({
       initCanvas.renderAll();
     });
 
-    initCanvas.on('selection:created', (e) => onSetActive(initCanvas, e.selected?.[0], page.id));
-    initCanvas.on('selection:updated', (e) => onSetActive(initCanvas, e.selected?.[0], page.id));
-    initCanvas.on('selection:cleared', () => onSetActive(initCanvas, null, page.id));
+    initCanvas.on('selection:created', (e) => {
+      setCanvasTouchMode(true);
+      onSetActive(initCanvas, e.selected?.[0], page.id);
+    });
+    initCanvas.on('selection:updated', (e) => {
+      setCanvasTouchMode(true);
+      onSetActive(initCanvas, e.selected?.[0], page.id);
+    });
+    initCanvas.on('selection:cleared', () => {
+      setCanvasTouchMode(false);
+      onSetActive(initCanvas, null, page.id);
+    });
 
     initCanvas.on('mouse:down', (event) => {
       if (!event.target && !initCanvas._isCropping) {
@@ -406,7 +420,7 @@ const PageCanvas = ({
 
   useEffect(() => {
     const updatePageScale = () => {
-      const availableWidth = Math.max(260, Math.min(600, window.innerWidth - 32));
+      const availableWidth = Math.max(240, Math.min(540, window.innerWidth - 48));
       setPageScale(availableWidth / 600);
     };
     updatePageScale();
@@ -666,17 +680,26 @@ export default function App() {
 
   const handleWorkspaceClick = (e) => {
     if (cropSessionRef.current) return;
-    if (e.target.id === 'workspace-container' || e.target.id === 'workspace-spacer') {
-      Object.values(canvasRefs.current).forEach((cvs) => {
-        if (cvs) {
-          cvs.discardActiveObject();
-          cvs.renderAll();
-        }
-      });
-      setActiveCanvas(null);
-      setActiveObject(null);
-      setActiveCanvasId(null);
-    }
+
+    const target = e.target;
+    if (target?.closest?.('button, input, label, .page-toolbar')) return;
+
+    const isFabricSurface =
+      target?.classList?.contains?.('upper-canvas') ||
+      target?.classList?.contains?.('lower-canvas') ||
+      target?.closest?.('.canvas-container');
+
+    if (isFabricSurface) return;
+
+    Object.values(canvasRefs.current).forEach((cvs) => {
+      if (cvs) {
+        cvs.discardActiveObject();
+        cvs.renderAll();
+      }
+    });
+    setActiveCanvas(null);
+    setActiveObject(null);
+    setActiveCanvasId(null);
   };
 
   // --- IMPORTING ---
@@ -1532,7 +1555,7 @@ export default function App() {
 
       {/* CENTER WORKSPACE */}
       {appMode === 'customisable' && (
-        <div id="workspace-container" onMouseDown={handleWorkspaceClick} onDragOver={handleSectionDragOver} onDrop={handleSectionDrop} className="flex-1 bg-[#0a0a0a] overflow-auto overscroll-contain p-2 sm:p-6 lg:p-10 pt-16 lg:pt-10 pb-28 lg:pb-10 flex flex-col items-center">
+        <div id="workspace-container" onMouseDown={handleWorkspaceClick} onTouchStart={handleWorkspaceClick} onDragOver={handleSectionDragOver} onDrop={handleSectionDrop} className="flex-1 min-w-0 bg-[#0a0a0a] overflow-auto overscroll-contain p-2 sm:p-6 lg:p-10 pt-16 lg:pt-10 pb-28 lg:pb-10 flex flex-col items-center">
           <div id="workspace-spacer" className="w-full max-w-[100vw] flex flex-col items-center">
             {pages.map((page, index) => (
               <PageCanvas
