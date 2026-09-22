@@ -180,7 +180,7 @@ const PageCanvas = ({
         onSetActive(initCanvas, touchState.target, page.id);
         setCanvasTouchMode(true);
         initCanvas.renderAll();
-      }, 800);
+      }, 600);
     };
 
     const onTouchMove = (e) => {
@@ -193,6 +193,7 @@ const PageCanvas = ({
         if (touchState.target && Math.hypot(point.clientX - touchState.startX, point.clientY - touchState.startY) > 8) {
           clearTouchHold();
           touchState.target = null;
+          initCanvas.selection = true;
         }
         return;
       }
@@ -214,13 +215,24 @@ const PageCanvas = ({
 
     const onTouchEnd = (e) => {
       e.stopImmediatePropagation();
+      const target = touchState.target;
+      const wasDragging = touchState.dragging;
       clearTouchHold();
-      if (touchState.dragging && touchState.target) {
-        initCanvas.fire('object:modified', { target: touchState.target });
+
+      if (target && !wasDragging) {
+        // A normal tap selects the image; it must not require a long press.
+        initCanvas.setActiveObject(target);
+        onSetActive(initCanvas, target, page.id);
       }
+
+      if (wasDragging && target) {
+        initCanvas.fire('object:modified', { target });
+      }
+
       touchState.target = null;
       touchState.dragging = false;
-      setCanvasTouchMode(false);
+      initCanvas.selection = true;
+      setCanvasTouchMode(!!initCanvas.getActiveObject());
       initCanvas.renderAll();
     };
 
