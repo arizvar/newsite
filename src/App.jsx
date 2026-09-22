@@ -129,7 +129,9 @@ const PageCanvas = ({
     initCanvas.boundaryLock = false;
     initCanvas.angleSnapEnabled = true;
     initCanvas.angleSnapStep = 15;
-    initCanvas.snapThreshold = 7;
+    // Keep the capture range deliberately tight: guides should assist an
+    // alignment, not make horizontal or vertical movement feel magnetic.
+    initCanvas.snapThreshold = 4;
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
     initCanvas.perPixelTargetFind = false;
@@ -574,6 +576,11 @@ const PageCanvas = ({
       if (!obj || obj.isGuide || obj.cropEditor) return;
 
       const rect = obj.getBoundingRect();
+      // Fabric bounding rects expose left/top/width/height, not right/bottom.
+      // Derive both trailing edges once so right and bottom snapping remain
+      // exactly as reliable as left and top snapping.
+      const right = rect.left + rect.width;
+      const bottom = rect.top + rect.height;
       let dx = 0;
       let dy = 0;
       const threshold = initCanvas.snapThreshold;
@@ -583,11 +590,11 @@ const PageCanvas = ({
       if (initCanvas.boundaryLock) {
         if (rect.width <= initCanvas.width) {
           if (rect.left < 0) dx = -rect.left;
-          else if (rect.right > initCanvas.width) dx = initCanvas.width - rect.right;
+          else if (right > initCanvas.width) dx = initCanvas.width - right;
         }
         if (rect.height <= initCanvas.height) {
           if (rect.top < 0) dy = -rect.top;
-          else if (rect.bottom > initCanvas.height) dy = initCanvas.height - rect.bottom;
+          else if (bottom > initCanvas.height) dy = initCanvas.height - bottom;
         }
       }
 
@@ -597,9 +604,9 @@ const PageCanvas = ({
         // crosses the page edge.
         const edgeDistances = [
           { axis: 'x', distance: Math.abs(rect.left), delta: -rect.left, guide: 0, addGuide: () => addVGuide(0) },
-          { axis: 'x', distance: Math.abs(initCanvas.width - rect.right), delta: initCanvas.width - rect.right, guide: initCanvas.width, addGuide: () => addVGuide(initCanvas.width) },
+          { axis: 'x', distance: Math.abs(initCanvas.width - right), delta: initCanvas.width - right, guide: initCanvas.width, addGuide: () => addVGuide(initCanvas.width) },
           { axis: 'y', distance: Math.abs(rect.top), delta: -rect.top, guide: 0, addGuide: () => addHGuide(0) },
-          { axis: 'y', distance: Math.abs(initCanvas.height - rect.bottom), delta: initCanvas.height - rect.bottom, guide: initCanvas.height, addGuide: () => addHGuide(initCanvas.height) },
+          { axis: 'y', distance: Math.abs(initCanvas.height - bottom), delta: initCanvas.height - bottom, guide: initCanvas.height, addGuide: () => addHGuide(initCanvas.height) },
         ];
 
         const xEdge = edgeDistances
@@ -1524,16 +1531,18 @@ export default function App() {
   const alignActive = (mode) => {
     if (!activeObject || !activeCanvas || activeObject.lockMovementX || cropSessionRef.current) return;
     const rect = activeObject.getBoundingRect();
+    const right = rect.left + rect.width;
+    const bottom = rect.top + rect.height;
     const center = activeObject.getCenterPoint();
     let dx = 0;
     let dy = 0;
 
     if (mode === 'left') dx = -rect.left;
     if (mode === 'centerH') dx = activeCanvas.width / 2 - center.x;
-    if (mode === 'right') dx = activeCanvas.width - rect.right;
+    if (mode === 'right') dx = activeCanvas.width - right;
     if (mode === 'top') dy = -rect.top;
     if (mode === 'centerV') dy = activeCanvas.height / 2 - center.y;
-    if (mode === 'bottom') dy = activeCanvas.height - rect.bottom;
+    if (mode === 'bottom') dy = activeCanvas.height - bottom;
 
     activeObject.left += dx;
     activeObject.top += dy;
