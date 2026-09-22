@@ -977,9 +977,10 @@ export default function App() {
   useEffect(() => {
     if (!viewingMode) return;
 
-    // Viewing Mode can be entered while crop mode is open. Tear down the
-    // temporary crop editor first so a hidden crop rectangle cannot remain
-    // interactive or leave its source image disabled when editing resumes.
+    // Clean up a temporary crop session when entering read-only mode.
+    // Individual PageCanvas instances own their Fabric read-only state; keeping
+    // that transition inside the child avoids mutating every canvas twice and
+    // prevents the rendered page from being disrupted by a parent-side pass.
     const crop = cropSessionRef.current;
     if (crop) {
       crop.image.clipPath = crop.originalClipPath;
@@ -991,24 +992,8 @@ export default function App() {
       setCropSession(null);
     }
 
-    Object.values(canvasRefs.current).forEach((cvs) => {
-      if (cvs) {
-        cvs.discardActiveObject();
-        cvs.selection = false;
-        cvs.skipTargetFind = true;
-        cvs.getObjects().forEach((obj) => {
-          if (obj.cropEditor) return;
-          obj.selectable = false;
-          obj.evented = false;
-        });
-        cvs.renderAll();
-      }
-    });
-    setActiveCanvas(null);
     setActiveObject(null);
     setActiveCanvasId(null);
-    setCropSession(null);
-    cropSessionRef.current = null;
     setMobileToolsOpen(false);
   }, [viewingMode]);
 
