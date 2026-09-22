@@ -1215,6 +1215,19 @@ export default function App() {
     });
   };
 
+  // Calculate the scale needed for an image to fit/fill the actual page.
+  // The page is 600x848 canvas units, so there is intentionally no artificial
+  // margin here. For rotated images, use their current rotated bounding box.
+  const getPageScale = (obj, cvs, mode) => {
+    if (!obj?.width || !obj?.height || !cvs) return 1;
+    const angle = ((obj.angle || 0) * Math.PI) / 180;
+    const baseW = Math.abs(obj.width * Math.cos(angle)) + Math.abs(obj.height * Math.sin(angle));
+    const baseH = Math.abs(obj.width * Math.sin(angle)) + Math.abs(obj.height * Math.cos(angle));
+    const ratioW = cvs.width / Math.max(0.0001, baseW);
+    const ratioH = cvs.height / Math.max(0.0001, baseH);
+    return mode === 'cover' ? Math.max(ratioW, ratioH) : Math.min(ratioW, ratioH);
+  };
+
   const fitAllImages = (mode) => {
     if (cropSessionRef.current) return;
     let changed = false;
@@ -1226,15 +1239,7 @@ export default function App() {
       cvs.getObjects()
         .filter((obj) => obj.type === 'image' && !obj.cropEditor && !obj.lockMovementX)
         .forEach((obj) => {
-          if (!obj.width || !obj.height) return;
-
-          const margin = 20;
-          const targetW = Math.max(1, cvs.width - margin * 2);
-          const targetH = Math.max(1, cvs.height - margin * 2);
-          const scale = mode === 'cover'
-            ? Math.max(targetW / obj.width, targetH / obj.height)
-            : Math.min(targetW / obj.width, targetH / obj.height);
-
+          const scale = getPageScale(obj, cvs, mode);
           obj.set({
             scaleX: scale,
             scaleY: scale,
@@ -1243,7 +1248,6 @@ export default function App() {
             centeredScaling: true,
           });
           obj.setCoords();
-          cvs.constrainActiveObject?.(obj);
           canvasChanged = true;
           changed = true;
         });
@@ -1269,13 +1273,7 @@ export default function App() {
     if (!activeObject || !activeCanvas || activeObject.lockMovementX || cropSessionRef.current) return;
     if (!activeObject.width || !activeObject.height) return;
 
-    const margin = 20;
-    const targetW = Math.max(1, activeCanvas.width - margin * 2);
-    const targetH = Math.max(1, activeCanvas.height - margin * 2);
-    const ratioW = targetW / activeObject.width;
-    const ratioH = targetH / activeObject.height;
-    const scale = mode === 'cover' ? Math.max(ratioW, ratioH) : Math.min(ratioW, ratioH);
-
+    const scale = getPageScale(activeObject, activeCanvas, mode);
     activeObject.set({
       scaleX: scale,
       scaleY: scale,
@@ -1285,14 +1283,8 @@ export default function App() {
     });
     activeObject.setCoords();
 
-    // Fit/Fill are explicit layout commands, so snapping should not move the
-    // image away from the exact page center.
-    if (mode === 'contain') {
-      activeObject.left = activeCanvas.width / 2;
-      activeObject.top = activeCanvas.height / 2;
-      activeObject.setCoords();
-    }
-
+    // Do not run snapping/boundary correction here: Fit and Fill are exact
+    // page-layout commands and must leave the image centered on the page.
     activeCanvas.renderAll();
     activeCanvas.fire('object:modified', { target: activeObject });
     setHistoryTrigger((prev) => prev + 1);
