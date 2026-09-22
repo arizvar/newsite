@@ -159,12 +159,16 @@ const PageCanvas = ({
 
       const corners = [
         [rect.left, rect.top],
+        [rect.left + rect.width / 2, rect.top],
         [rect.left + rect.width, rect.top],
+        [rect.left, rect.top + rect.height / 2],
+        [rect.left + rect.width, rect.top + rect.height / 2],
         [rect.left, rect.top + rect.height],
+        [rect.left + rect.width / 2, rect.top + rect.height],
         [rect.left + rect.width, rect.top + rect.height],
       ];
 
-      const tolerance = 34;
+      const tolerance = 38;
       const px = canvasRect.left + point.clientX - canvasRect.left;
       const py = canvasRect.top + point.clientY - canvasRect.top;
 
