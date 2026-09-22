@@ -78,18 +78,22 @@ const PageCanvas = ({
   const [pageScale, setPageScale] = useState(1);
 
   useEffect(() => {
-    fabric.Object.prototype.set({
-      transparentCorners: false,
-      cornerColor: '#ffffff',
-      cornerStrokeColor: '#00c3ff',
-      borderColor: '#00c3ff',
-      cornerSize: 12,
-      padding: 0,
-      borderDashArray: [4, 4],
-      lockUniScaling: true,
-      centeredRotation: true,
-      touchCornerSize: 44,
-    });
+    if (!fabric.Object.prototype._bareenaPDFsConfigured) {
+      fabric.Object.prototype.set({
+        transparentCorners: false,
+        cornerColor: '#ffffff',
+        cornerStrokeColor: '#00c3ff',
+        borderColor: '#00c3ff',
+        cornerSize: 12,
+        padding: 0,
+        borderDashArray: [4, 4],
+        lockUniScaling: true,
+        centeredRotation: true,
+        centeredScaling: true,
+        touchCornerSize: 44,
+      });
+      fabric.Object.prototype._bareenaPDFsConfigured = true;
+    }
 
     const configureRotationControl = (obj) => {
       const rotationControl = obj?.controls?.mtr;
@@ -388,7 +392,9 @@ const PageCanvas = ({
       const transform = e.transform;
       const obj = transform?.target;
       if (!obj || obj.cropEditor) return;
-      if (/^scale/.test(transform.action || '')) obj._scaleGestureCenter = obj.getCenterPoint();
+      if (/^scale/.test(transform.action || '')) {
+        if (!obj._scaleGestureCenter) obj._scaleGestureCenter = obj.getCenterPoint();
+      }
     });
 
     initCanvas.on('object:moving', (e) => {
@@ -434,15 +440,20 @@ const PageCanvas = ({
         obj.setCoords();
       }
       clearGuides();
-      constrainToPage(obj);
+      // Keep the gesture center fixed throughout the complete pointer gesture.
+      // Boundary clamping above handles oversized objects without introducing
+      // a second position correction on every pointer event.
       obj.setCoords();
-      obj._scaleGestureCenter = null;
       initCanvas.renderAll();
+    });
+
+    initCanvas.on('object:modified', (e) => {
+      if (e.target?._scaleGestureCenter) e.target._scaleGestureCenter = null;
     });
 
     initCanvas.on('object:rotating', (e) => {
       const obj = e.target;
-      if (!obj || obj.cropEditor || !initCanvas.angleSnapEnabled) return;
+      if (!obj || obj.cropEditor) return;
 
       const step = initCanvas.angleSnapStep || 15;
       const threshold = 4;
@@ -451,7 +462,9 @@ const PageCanvas = ({
       let delta = Math.abs(angle - snapped);
       delta = Math.min(delta, 360 - delta);
 
-      if (delta <= threshold) obj.set('angle', snapped === 360 ? 0 : snapped);
+      if (initCanvas.angleSnapEnabled && delta <= threshold) {
+        obj.set('angle', snapped === 360 ? 0 : snapped);
+      }
       initCanvas.renderAll();
     });
 
@@ -465,6 +478,8 @@ const PageCanvas = ({
 
     initCanvas.on('mouse:up', () => {
       clearGuides();
+      const active = initCanvas.getActiveObject();
+      if (active?._scaleGestureCenter) active._scaleGestureCenter = null;
       initCanvas.renderAll();
     });
 
@@ -501,6 +516,7 @@ const PageCanvas = ({
           scaleX: scale,
           scaleY: scale,
           lockUniScaling: true,
+          centeredScaling: true,
         });
         initCanvas.add(img);
         initCanvas.renderAll();
@@ -546,6 +562,7 @@ const PageCanvas = ({
         scaleX: scale,
         scaleY: scale,
         lockUniScaling: true,
+        centeredScaling: true,
       });
       canvas.add(img);
       canvas.setActiveObject(img);
@@ -747,17 +764,22 @@ export default function App() {
       if (!activeCanvas) return;
 
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-        if (activeObject && !activeObject.lockMovementX) {
-          e.preventDefault();
+        if (activeObject) {
           const step = e.shiftKey ? 10 : 1;
-          if (e.key === 'ArrowUp') activeObject.top -= step;
-          if (e.key === 'ArrowDown') activeObject.top += step;
-          if (e.key === 'ArrowLeft') activeObject.left -= step;
-          if (e.key === 'ArrowRight') activeObject.left += step;
-          activeObject.setCoords();
-          activeCanvas.fire('object:moving', { target: activeObject });
-          activeCanvas.renderAll();
-          setHistoryTrigger((prev) => prev + 1);
+          const isHorizontal = e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+          const isVertical = e.key === 'ArrowUp' || e.key === 'ArrowDown';
+          const canMove = (isHorizontal && !activeObject.lockMovementX) || (isVertical && !activeObject.lockMovementY);
+
+          if (canMove) {
+            e.preventDefault();
+            if (e.key === 'ArrowUp' && !activeObject.lockMovementY) activeObject.top -= step;
+            if (e.key === 'ArrowDown' && !activeObject.lockMovementY) activeObject.top += step;
+            if (e.key === 'ArrowLeft' && !activeObject.lockMovementX) activeObject.left -= step;
+            if (e.key === 'ArrowRight' && !activeObject.lockMovementX) activeObject.left += step;
+            activeObject.setCoords();
+            activeCanvas.constrainActiveObject?.(activeObject);
+            activeCanvas.renderAll();
+          }
         }
         return;
       }
@@ -1036,6 +1058,11 @@ export default function App() {
 
   const deletePage = (id) => {
     if (pages.length === 1) return alert('You must have at least one page.');
+    if (activeCanvasId === id) {
+      setActiveCanvas(null);
+      setActiveObject(null);
+      setActiveCanvasId(null);
+    }
     setPages((prev) => prev.filter((p) => p.id !== id));
     delete canvasRefs.current[id];
   };
@@ -1191,24 +1218,40 @@ export default function App() {
   const fitAllImages = (mode) => {
     if (cropSessionRef.current) return;
     let changed = false;
+
     Object.values(canvasRefs.current).forEach((cvs) => {
       if (!cvs) return;
-      cvs.getObjects().filter((obj) => obj.type === 'image' && !obj.cropEditor && !obj.lockMovementX).forEach((obj) => {
-        if (!obj.width || !obj.height) return;
-        const margin = 20;
-        const targetW = cvs.width - margin * 2;
-        const targetH = cvs.height - margin * 2;
-        const scale = mode === 'cover'
-          ? Math.max(targetW / obj.width, targetH / obj.height)
-          : Math.min(targetW / obj.width, targetH / obj.height);
-        obj.set({ scaleX: scale, scaleY: scale, left: cvs.width / 2, top: cvs.height / 2 });
-        obj.setCoords();
-        cvs.constrainActiveObject?.(obj);
-        changed = true;
-      });
+      let canvasChanged = false;
+
+      cvs.getObjects()
+        .filter((obj) => obj.type === 'image' && !obj.cropEditor && !obj.lockMovementX)
+        .forEach((obj) => {
+          if (!obj.width || !obj.height) return;
+
+          const margin = 20;
+          const targetW = Math.max(1, cvs.width - margin * 2);
+          const targetH = Math.max(1, cvs.height - margin * 2);
+          const scale = mode === 'cover'
+            ? Math.max(targetW / obj.width, targetH / obj.height)
+            : Math.min(targetW / obj.width, targetH / obj.height);
+
+          obj.set({
+            scaleX: scale,
+            scaleY: scale,
+            left: cvs.width / 2,
+            top: cvs.height / 2,
+            centeredScaling: true,
+          });
+          obj.setCoords();
+          cvs.constrainActiveObject?.(obj);
+          canvasChanged = true;
+          changed = true;
+        });
+
+      if (canvasChanged) cvs.fire('object:modified', { target: null });
       cvs.renderAll();
-      if (changed) cvs.fire('object:modified', { target: null });
     });
+
     if (changed) setHistoryTrigger((prev) => prev + 1);
   };
 
@@ -1227,15 +1270,29 @@ export default function App() {
     if (!activeObject.width || !activeObject.height) return;
 
     const margin = 20;
-    const targetW = activeCanvas.width - margin * 2;
-    const targetH = activeCanvas.height - margin * 2;
+    const targetW = Math.max(1, activeCanvas.width - margin * 2);
+    const targetH = Math.max(1, activeCanvas.height - margin * 2);
     const ratioW = targetW / activeObject.width;
     const ratioH = targetH / activeObject.height;
     const scale = mode === 'cover' ? Math.max(ratioW, ratioH) : Math.min(ratioW, ratioH);
 
-    activeObject.set({ scaleX: scale, scaleY: scale, left: activeCanvas.width / 2, top: activeCanvas.height / 2 });
+    activeObject.set({
+      scaleX: scale,
+      scaleY: scale,
+      left: activeCanvas.width / 2,
+      top: activeCanvas.height / 2,
+      centeredScaling: true,
+    });
     activeObject.setCoords();
-    if (mode === 'contain') activeCanvas.constrainActiveObject?.(activeObject);
+
+    // Fit/Fill are explicit layout commands, so snapping should not move the
+    // image away from the exact page center.
+    if (mode === 'contain') {
+      activeObject.left = activeCanvas.width / 2;
+      activeObject.top = activeCanvas.height / 2;
+      activeObject.setCoords();
+    }
+
     activeCanvas.renderAll();
     activeCanvas.fire('object:modified', { target: activeObject });
     setHistoryTrigger((prev) => prev + 1);
@@ -2019,7 +2076,7 @@ export default function App() {
         <div className="xl:hidden fixed inset-0 z-[60] bg-black/60" onMouseDown={(e) => { if (e.currentTarget === e.target) setMobileToolsOpen(false); }}><div className="absolute inset-x-0 bottom-0 max-h-[82vh] overflow-y-auto rounded-t-3xl border-t border-neutral-700 bg-[#121212] shadow-2xl pb-[max(12px,env(safe-area-inset-bottom))]"><div className="sticky top-0 z-10 bg-[#121212] border-b border-neutral-800 px-4 py-3 flex items-center justify-between"><span className="text-sm font-semibold">Editor tools</span><button onClick={() => setMobileToolsOpen(false)} className="p-2 rounded-lg hover:bg-neutral-900"><X size={16} /></button></div>{activeObject ? <div className="p-4 space-y-5"><div className="grid grid-cols-2 gap-2">
 <button onClick={() => rotateActive(-90)} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs flex items-center justify-center gap-1"><RotateCcw size={14} /> Rotate Left</button>
 <button onClick={() => rotateActive(90)} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs flex items-center justify-center gap-1"><RotateCcw size={14} className="scale-x-[-1]" /> Rotate Right</button>
-</div><div className="grid grid-cols-2 gap-2"><button onClick={() => alignActive('left') className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Left</button><button onClick={() => alignActive('centerH')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Center</button><button onClick={() => alignActive('right')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Right</button><button onClick={() => alignActive('top')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Top</button><button onClick={() => alignActive('centerV')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Middle</button><button onClick={() => alignActive('bottom')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Bottom</button></div><div className="grid grid-cols-2 gap-2"><button onClick={() => fitAllImages('contain')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fit All</button><button onClick={() => fitAllImages('cover')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fill All</button></div><div className="grid grid-cols-2 gap-2"><button onClick={() => centerAndScaleActive('contain') className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fit page</button><button onClick={() => centerAndScaleActive('cover')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fill page</button></div><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Proportional scaling</span><input type="checkbox" checked={activeObject.lockUniScaling !== false} onChange={toggleAspectRatioLock} className="accent-blue-500" /></label><div className="grid grid-cols-2 gap-3"><label className="bg-neutral-900 border border-neutral-800 rounded p-2"><span className="text-[10px] text-neutral-500 block mb-1">X</span><input type="number" value={Math.round(activeObject.left || 0)} onChange={(e) => handlePropertyChange('left', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label><label className="bg-neutral-900 border border-neutral-800 rounded p-2"><span className="text-[10px] text-neutral-500 block mb-1">Y</span><input type="number" value={Math.round(activeObject.top || 0)} onChange={(e) => handlePropertyChange('top', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label></div></div> : <div className="p-4 space-y-3"><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Smart snapping</span><input type="checkbox" checked={!!activeCanvas?.snapEnabled} onChange={() => toggleCanvasSetting('snapEnabled')} className="accent-blue-500" /></label><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Keep inside page</span><input type="checkbox" checked={!!activeCanvas?.boundaryLock} onChange={() => toggleCanvasSetting('boundaryLock')} className="accent-blue-500" /></label><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">15° angle snapping</span><input type="checkbox" checked={!!activeCanvas?.angleSnapEnabled} onChange={() => toggleCanvasSetting('angleSnapEnabled')} className="accent-blue-500" /></label></div>}<div className="px-4 pb-4"><label className="text-xs text-neutral-500 block mb-2">File Name</label><input type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-700 rounded p-2 text-sm focus:outline-none focus:border-blue-500" /></div></div></div>
+</div><div className="grid grid-cols-2 gap-2"><button onClick={() => alignActive('left')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Left</button><button onClick={() => alignActive('centerH')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Center</button><button onClick={() => alignActive('right')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Right</button><button onClick={() => alignActive('top')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Top</button><button onClick={() => alignActive('centerV')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Middle</button><button onClick={() => alignActive('bottom')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Bottom</button></div><div className="grid grid-cols-2 gap-2"><button onClick={() => fitAllImages('contain')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fit All</button><button onClick={() => fitAllImages('cover')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fill All</button></div><div className="grid grid-cols-2 gap-2"><button onClick={() => centerAndScaleActive('contain')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fit page</button><button onClick={() => centerAndScaleActive('cover')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fill page</button></div><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Proportional scaling</span><input type="checkbox" checked={activeObject.lockUniScaling !== false} onChange={toggleAspectRatioLock} className="accent-blue-500" /></label><div className="grid grid-cols-2 gap-3"><label className="bg-neutral-900 border border-neutral-800 rounded p-2"><span className="text-[10px] text-neutral-500 block mb-1">X</span><input type="number" value={Math.round(activeObject.left || 0)} onChange={(e) => handlePropertyChange('left', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label><label className="bg-neutral-900 border border-neutral-800 rounded p-2"><span className="text-[10px] text-neutral-500 block mb-1">Y</span><input type="number" value={Math.round(activeObject.top || 0)} onChange={(e) => handlePropertyChange('top', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label></div></div> : <div className="p-4 space-y-3"><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Smart snapping</span><input type="checkbox" checked={!!activeCanvas?.snapEnabled} onChange={() => toggleCanvasSetting('snapEnabled')} className="accent-blue-500" /></label><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Keep inside page</span><input type="checkbox" checked={!!activeCanvas?.boundaryLock} onChange={() => toggleCanvasSetting('boundaryLock')} className="accent-blue-500" /></label><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">15° angle snapping</span><input type="checkbox" checked={!!activeCanvas?.angleSnapEnabled} onChange={() => toggleCanvasSetting('angleSnapEnabled')} className="accent-blue-500" /></label></div>}<div className="px-4 pb-4"><label className="text-xs text-neutral-500 block mb-2">File Name</label><input type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-700 rounded p-2 text-sm focus:outline-none focus:border-blue-500" /></div></div></div>
       )}
 
       {appMode === 'autofit' && (
