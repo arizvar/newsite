@@ -132,6 +132,81 @@ const PageCanvas = ({
     };
     setCanvasTouchMode(false);
 
+    // On phones, normal finger movement should scroll the page.
+    // An object only becomes draggable after a deliberate 320ms hold.
+    const touchState = { timer: null, target: null, startX: 0, startY: 0, lastX: 0, lastY: 0, dragging: false };
+    const clearTouchHold = () => {
+      if (touchState.timer) window.clearTimeout(touchState.timer);
+      touchState.timer = null;
+    };
+    const getTouchPoint = (e) => e.touches?.[0] || e.changedTouches?.[0];
+
+    const onTouchStart = (e) => {
+      if (initCanvas._isCropping || e.touches.length !== 1) return;
+      const point = getTouchPoint(e);
+      const target = initCanvas.findTarget(e);
+      if (!point || !target || target.isGuide || target.cropEditor) return;
+
+      touchState.target = target;
+      touchState.startX = touchState.lastX = point.clientX;
+      touchState.startY = touchState.lastY = point.clientY;
+      touchState.dragging = false;
+      clearTouchHold();
+
+      touchState.timer = window.setTimeout(() => {
+        if (!touchState.target) return;
+        touchState.dragging = true;
+        initCanvas.setActiveObject(touchState.target);
+        onSetActive(initCanvas, touchState.target, page.id);
+        setCanvasTouchMode(true);
+        initCanvas.renderAll();
+      }, 320);
+    };
+
+    const onTouchMove = (e) => {
+      if (!touchState.target || e.touches.length !== 1) return;
+      const point = getTouchPoint(e);
+      if (!point) return;
+
+      if (!touchState.dragging) {
+        if (Math.hypot(point.clientX - touchState.startX, point.clientY - touchState.startY) > 8) {
+          clearTouchHold();
+          touchState.target = null;
+        }
+        return;
+      }
+
+      e.preventDefault();
+      const dx = point.clientX - touchState.lastX;
+      const dy = point.clientY - touchState.lastY;
+      touchState.lastX = point.clientX;
+      touchState.lastY = point.clientY;
+
+      if (!touchState.target.lockMovementX) {
+        touchState.target.left += dx / pageScale;
+        touchState.target.top += dy / pageScale;
+        touchState.target.setCoords();
+        initCanvas.constrainActiveObject?.(touchState.target);
+        initCanvas.renderAll();
+      }
+    };
+
+    const onTouchEnd = () => {
+      clearTouchHold();
+      if (touchState.dragging && touchState.target) {
+        initCanvas.fire('object:modified', { target: touchState.target });
+      }
+      touchState.target = null;
+      touchState.dragging = false;
+      setCanvasTouchMode(!!initCanvas.getActiveObject());
+      initCanvas.renderAll();
+    };
+
+    initCanvas.upperCanvasEl.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
+    initCanvas.upperCanvasEl.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+    initCanvas.upperCanvasEl.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
+    initCanvas.upperCanvasEl.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: true });
+
     registerCanvas(page.id, initCanvas);
 
     initCanvas.history = [];
@@ -415,7 +490,14 @@ const PageCanvas = ({
     }
 
     setCanvas(initCanvas);
-    return () => initCanvas.dispose();
+    return () => {
+      clearTouchHold();
+      initCanvas.upperCanvasEl?.removeEventListener('touchstart', onTouchStart, true);
+      initCanvas.upperCanvasEl?.removeEventListener('touchmove', onTouchMove, true);
+      initCanvas.upperCanvasEl?.removeEventListener('touchend', onTouchEnd, true);
+      initCanvas.upperCanvasEl?.removeEventListener('touchcancel', onTouchEnd, true);
+      initCanvas.dispose();
+    };
   }, [page.id, page.initialImage]);
 
   useEffect(() => {
@@ -1399,6 +1481,7 @@ export default function App() {
       <main className="min-h-[100dvh] w-full bg-[#0a0a0a] text-neutral-200 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
           <div className="text-center mb-8 sm:mb-10">
+            <div className="mx-auto mb-3 h-14 w-14 rounded-2xl bg-neutral-950 border border-neutral-700 p-2 shadow-xl"><img src="/favicon.svg" alt="BareenaPDFs" className="h-full w-full object-contain" /></div>
             <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">BareenaPDFs</h1>
             <div className="mt-2 text-[10px] sm:text-xs font-semibold text-neutral-500 uppercase tracking-[0.22em]">made by ariz</div>
           </div>
@@ -1473,6 +1556,7 @@ export default function App() {
       <div className="lg:hidden absolute top-0 left-0 right-0 z-40 bg-[#121212]/95 backdrop-blur-xl border-b border-neutral-800">
         <div className="px-3 py-2.5 flex items-center gap-2">
           <button onClick={goToModes} className="p-2 -ml-1 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Back to modes"><LayoutTemplate size={16} /></button>
+          <div className="h-9 w-9 shrink-0 rounded-xl bg-neutral-950 border border-neutral-700 p-1 shadow-lg"><img src="/favicon.svg" alt="" className="h-full w-full object-contain" /></div>
           <div className="min-w-0 flex-1"><div className="text-base font-black text-white leading-none">BareenaPDFs</div><div className="text-[9px] font-semibold text-neutral-500 uppercase tracking-widest mt-1">made by ariz</div></div>
           <button onClick={() => setMobileToolsOpen((open) => !open)} className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Open tools"><Menu size={17} /></button>
         </div>
