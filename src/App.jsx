@@ -384,27 +384,6 @@ const PageCanvas = ({
       obj.setCoords();
     };
 
-    const constrainScaleToPage = (obj) => {
-      if (!obj || obj.isGuide || obj.cropEditor || !initCanvas.boundaryLock) return;
-
-      const rect = obj.getBoundingRect();
-      let factor = 1;
-
-      if (rect.width > initCanvas.width) factor = Math.min(factor, initCanvas.width / rect.width);
-      if (rect.height > initCanvas.height) factor = Math.min(factor, initCanvas.height / rect.height);
-
-      // Also stop an image from scaling past an edge from its anchor point.
-      const overflowX = Math.max(0, -rect.left, rect.right - initCanvas.width);
-      const overflowY = Math.max(0, -rect.top, rect.bottom - initCanvas.height);
-      if (overflowX > 0 || overflowY > 0) factor = Math.min(factor, 0.985);
-
-      if (factor < 1) {
-        obj.scaleX *= factor;
-        obj.scaleY *= factor;
-        constrainToPage(obj);
-      }
-    };
-
     initCanvas.on('object:moving', (e) => {
       const obj = e.target;
       if (!obj || obj.cropEditor) return;
@@ -417,6 +396,7 @@ const PageCanvas = ({
       const obj = e.target;
       if (!obj || obj.cropEditor) return;
 
+      // Keep proportional images proportional without touching their size while moving.
       if (obj.type === 'image' && obj.lockUniScaling !== false) {
         const uniform = Math.max(Math.abs(obj.scaleX || 1), Math.abs(obj.scaleY || 1));
         obj.set({
@@ -425,17 +405,24 @@ const PageCanvas = ({
         });
       }
 
+      // Clamp an oversized scale once against the page bounds. Do not use a
+      // repeated 0.985 multiplier: that compounds on every pointer event and
+      // makes an image appear to randomly shrink during a drag.
       if (initCanvas.boundaryLock) {
         const rect = obj.getBoundingRect();
-        const factor = Math.min(1, rect.width > initCanvas.width ? initCanvas.width / rect.width : 1, rect.height > initCanvas.height ? initCanvas.height / rect.height : 1);
+        const factor = Math.min(
+          1,
+          rect.width > initCanvas.width ? initCanvas.width / rect.width : 1,
+          rect.height > initCanvas.height ? initCanvas.height / rect.height : 1
+        );
         if (factor < 1) {
           obj.scaleX *= factor;
           obj.scaleY *= factor;
+          obj.setCoords();
         }
       }
 
       clearGuides();
-      constrainScaleToPage(obj);
       constrainToPage(obj);
       initCanvas.renderAll();
     });
@@ -457,8 +444,8 @@ const PageCanvas = ({
 
     initCanvas.constrainActiveObject = (obj) => {
       if (!obj) return;
+      // Moving must never alter scale. Boundary enforcement here is position-only.
       clearGuides();
-      constrainScaleToPage(obj);
       constrainToPage(obj);
       obj.setCoords();
     };
@@ -610,7 +597,7 @@ const PageCanvas = ({
           <button onClick={() => deletePage(page.id)} className="p-1.5 hover:bg-red-500/20 text-red-500 rounded ml-2"><Trash2 size={16} /></button>
         </div>
       </div>
-      <div className={`shadow-2xl transition-all ${isActivePage ? 'ring-4 ring-blue-500 shadow-blue-500/20' : 'ring-1 ring-neutral-800'}`} style={{ width: 600 * pageScale }}>
+      <div className="shadow-2xl transition-all ring-1 ring-neutral-800" style={{ width: 600 * pageScale }}>
         <canvas ref={canvasRef} className="select-none" style={{ display: 'block' }} />
       </div>
     </div>
