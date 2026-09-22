@@ -131,7 +131,10 @@ const PageCanvas = ({
     // Keep the capture range deliberately tight: guides should assist an
     // alignment, not make horizontal or vertical movement feel magnetic.
     initCanvas.snapThreshold = 4;
+ codex/fix-mobile-image-editing-issues-z1m2hh
     initCanvas.isViewingMode = false;
+=======
+ main
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
     initCanvas.perPixelTargetFind = false;
