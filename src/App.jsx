@@ -37,6 +37,32 @@ const getObjectCenter = (obj) => obj.getCenterPoint();
 
 const safeFileName = (name, fallback = 'BareenaPDFs') => {
   const cleaned = String(name || '').trim().replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/\s+/g, ' ');
+  // BareenaPDFs mode chooser
+  if (!appMode) {
+    return (
+      <div className="min-h-screen w-full bg-[#0a0a0a] text-neutral-200 flex items-center justify-center px-5 py-8 sm:px-8">
+        <div className="w-full max-w-4xl">
+          <div className="text-center mb-8 sm:mb-10">
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">BareenaPDFs</h1>
+            <div className="text-[10px] sm:text-xs font-semibold text-neutral-500 uppercase tracking-[0.22em] mt-2">made by ariz</div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            {modeOptions.map(({ id, label, description, Icon, accent }) => {
+              const accentClasses = { blue: 'hover:border-blue-500/50 hover:bg-blue-500/5', emerald: 'hover:border-emerald-500/50 hover:bg-emerald-500/5', purple: 'hover:border-purple-500/50 hover:bg-purple-500/5', orange: 'hover:border-orange-500/50 hover:bg-orange-500/5' };
+              const iconClasses = { blue: 'bg-blue-500/10 text-blue-400 border-blue-500/15', emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/15', purple: 'bg-purple-500/10 text-purple-400 border-purple-500/15', orange: 'bg-orange-500/10 text-orange-400 border-orange-500/15' };
+              return (
+                <button key={id} onClick={() => setAppMode(id)} className={"group text-left rounded-2xl border border-neutral-800 bg-[#121212] p-5 sm:p-6 transition-all active:scale-[0.985] " + accentClasses[accent]}>
+                  <div className={"w-11 h-11 rounded-xl border flex items-center justify-center mb-5 " + iconClasses[accent]}><Icon size={21} /></div>
+                  <div className="flex items-center justify-between gap-3"><h2 className="text-base sm:text-lg font-bold text-white">{label}</h2><span className="text-neutral-600 group-hover:text-neutral-400 transition-colors">→</span></div>
+                  <p className="mt-2 text-xs sm:text-sm leading-relaxed text-neutral-500">{description}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (cleaned || fallback).replace(/\.pdf$/i, '');
 };
 
@@ -88,7 +114,7 @@ const PageCanvas = ({
       borderDashArray: [4, 4],
       lockUniScaling: true,
       centeredRotation: true,
-      touchCornerSize: 28,
+      touchCornerSize: 36,
     });
 
     const configureRotationControl = (obj) => {
@@ -368,6 +394,14 @@ const PageCanvas = ({
     initCanvas.on('selection:updated', (e) => onSetActive(initCanvas, e.selected?.[0], page.id));
     initCanvas.on('selection:cleared', () => onSetActive(initCanvas, null, page.id));
 
+    initCanvas.on('mouse:down', (event) => {
+      if (!event.target && !initCanvas._isCropping) {
+        initCanvas.discardActiveObject();
+        initCanvas.renderAll();
+        onSetActive(initCanvas, null, page.id);
+      }
+    });
+
     if (page.initialImage) {
       fabric.Image.fromURL(page.initialImage, (img) => {
         if (!canvasRef.current || !img) return;
@@ -455,7 +489,7 @@ const PageCanvas = ({
         </div>
       </div>
       <div className={`shadow-2xl transition-all ${isActivePage ? 'ring-4 ring-blue-500 shadow-blue-500/20' : 'ring-1 ring-neutral-800'}`} style={{ width: 600 * pageScale }}>
-        <canvas ref={canvasRef} className="touch-none" style={{ width: `${600 * pageScale}px`, height: `${848 * pageScale}px`, display: 'block' }} />
+        <canvas ref={canvasRef} className="touch-none select-none" style={{ width: `${600 * pageScale}px`, height: `${848 * pageScale}px`, display: 'block' }} />
       </div>
     </div>
   );
@@ -465,7 +499,7 @@ const PageCanvas = ({
 // MAIN APPLICATION
 // ==========================================
 export default function App() {
-  const [appMode, setAppMode] = useState('customisable');
+  const [appMode, setAppMode] = useState(null);
 
   const [pages, setPages] = useState([{ id: Date.now(), initialImage: null }]);
   const canvasRefs = useRef({});
@@ -482,6 +516,26 @@ export default function App() {
   const [isMergeBusy, setIsMergeBusy] = useState(false);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [fileName, setFileName] = useState(`BPDF_${Math.floor(Date.now() / 1000)}`);
+
+  const modeOptions = [
+    { id: 'customisable', label: 'Customisable', description: 'Place, crop, resize and arrange images on editable A4 pages.', Icon: LayoutTemplate, accent: 'blue' },
+    { id: 'autofit', label: 'Auto-Fit', description: 'Turn images into clean portrait or landscape PDF pages automatically.', Icon: Maximize, accent: 'emerald' },
+    { id: 'pdf2img', label: 'PDF → Img', description: 'Extract every PDF page as a high-quality image.', Icon: ImageIcon, accent: 'purple' },
+    { id: 'merge', label: 'Merge PDFs', description: 'Arrange PDF files and combine them into one document.', Icon: FilePlus2, accent: 'orange' },
+  ];
+
+  const goToModes = () => {
+    Object.values(canvasRefs.current).forEach((cvs) => {
+      if (cvs) { cvs.discardActiveObject(); cvs.renderAll(); }
+    });
+    setActiveCanvas(null);
+    setActiveObject(null);
+    setActiveCanvasId(null);
+    setCropSession(null);
+    cropSessionRef.current = null;
+    setMobileToolsOpen(false);
+    setAppMode(null);
+  };
 
   // Crop editor state.
   const [cropSession, setCropSession] = useState(null);
@@ -1312,9 +1366,10 @@ export default function App() {
   return (
     <div className="relative flex h-screen w-full bg-[#0a0a0a] font-sans text-neutral-200 overflow-hidden">
       <div className="lg:hidden absolute top-0 left-0 right-0 z-40 bg-[#121212]/95 backdrop-blur-xl border-b border-neutral-800">
-        <div className="px-3 py-2.5 flex items-center gap-2"><div className="min-w-0 flex-1"><div className="text-base font-black text-white leading-none">BareenaPDFs</div><div className="text-[9px] font-semibold text-neutral-500 uppercase tracking-widest mt-1">made by ariz</div></div><button onClick={() => setMobileToolsOpen((open) => !open)} className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300" aria-label="Open tools"><Menu size={17} /></button></div>
-        <div className="grid grid-cols-4 gap-1 px-2 pb-2">
-          {[['customisable', LayoutTemplate, 'Custom'], ['autofit', Maximize, 'Auto-Fit'], ['pdf2img', ImageIcon, 'PDF → Img'], ['merge', FilePlus2, 'Merge']].map(([mode, Icon, label]) => <button key={mode} onClick={() => { setAppMode(mode); setMobileToolsOpen(false); }} className={`rounded-md py-1.5 text-[9px] font-semibold flex items-center justify-center gap-1 ${appMode === mode ? (mode === 'autofit' ? 'bg-emerald-600 text-white' : mode === 'pdf2img' ? 'bg-purple-600 text-white' : mode === 'merge' ? 'bg-orange-600 text-white' : 'bg-blue-600 text-white') : 'text-neutral-500 bg-neutral-900 hover:text-white'}`}><Icon size={12} />{label}</button>)}
+        <div className="px-3 py-2.5 flex items-center gap-2">
+          <button onClick={goToModes} className="p-2 -ml-1 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Back to modes"><LayoutTemplate size={16} /></button>
+          <div className="min-w-0 flex-1"><div className="text-base font-black text-white leading-none">BareenaPDFs</div><div className="text-[9px] font-semibold text-neutral-500 uppercase tracking-widest mt-1">made by ariz</div></div>
+          <button onClick={() => setMobileToolsOpen((open) => !open)} className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Open tools"><Menu size={17} /></button>
         </div>
       </div>
 
@@ -1323,7 +1378,7 @@ export default function App() {
         <div>
           <div className="p-6">
             <div className="mb-6">
-              <h1 className="text-2xl font-black text-white tracking-tight leading-none">BareenaPDFs</h1>
+              <button onClick={goToModes} className="text-left text-2xl font-black text-white tracking-tight leading-none hover:text-blue-300 transition-colors">BareenaPDFs</button>
               <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-widest mt-1 block">made by ariz</span>
             </div>
 
@@ -1413,7 +1468,7 @@ export default function App() {
 
       {/* CENTER WORKSPACE */}
       {appMode === 'customisable' && (
-        <div id="workspace-container" onMouseDown={handleWorkspaceClick} onDragOver={handleSectionDragOver} onDrop={handleSectionDrop} className="flex-1 bg-[#0a0a0a] overflow-auto p-3 sm:p-6 lg:p-10 pt-24 lg:pt-10 pb-24 lg:pb-10 flex flex-col items-center">
+        <div id="workspace-container" onMouseDown={handleWorkspaceClick} onDragOver={handleSectionDragOver} onDrop={handleSectionDrop} className="flex-1 bg-[#0a0a0a] overflow-auto overscroll-contain p-2 sm:p-6 lg:p-10 pt-16 lg:pt-10 pb-28 lg:pb-10 flex flex-col items-center">
           <div id="workspace-spacer" className="w-full max-w-[100vw] flex flex-col items-center">
             {pages.map((page, index) => (
               <PageCanvas
@@ -1676,18 +1731,25 @@ export default function App() {
           )}
         </div>
       )}
-      {appMode === 'customisable' && activeObject && (
-        <div className="xl:hidden fixed inset-x-0 bottom-0 z-50 px-2 pb-[max(8px,env(safe-area-inset-bottom))]">
-          <div className="mx-auto max-w-xl rounded-2xl border border-neutral-800 bg-[#121212]/97 backdrop-blur-xl shadow-2xl p-2"><div className="grid grid-cols-5 gap-1.5">
-            <button onClick={startCrop} disabled={activeObject.type !== 'image' || activeObject.lockMovementX} className="py-2 rounded-xl bg-blue-600 text-white text-[10px] font-semibold disabled:opacity-30"><Crop size={15} className="mx-auto mb-1" />Crop</button>
-            <button onClick={duplicateSelected} disabled={activeObject.lockMovementX} className="py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30"><Copy size={15} className="mx-auto mb-1" />Duplicate</button>
-            <button onClick={toggleLock} className="py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold"><Lock size={15} className="mx-auto mb-1" />{activeObject.lockMovementX ? 'Unlock' : 'Lock'}</button>
-            <button onClick={() => setMobileToolsOpen(true)} className="py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold"><Settings size={15} className="mx-auto mb-1" />More</button>
-            <button onClick={exportCustomPDF} disabled={!!cropSessionRef.current} className="py-2 rounded-xl bg-white text-black text-[10px] font-semibold disabled:opacity-30"><Download size={15} className="mx-auto mb-1" />Export</button>
-          </div></div>
+      {appMode === 'customisable' && (
+        <div className="xl:hidden fixed inset-x-0 bottom-0 z-50 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pointer-events-none">
+          <div className="mx-auto max-w-xl rounded-2xl border border-neutral-800 bg-[#121212]/97 backdrop-blur-xl shadow-2xl p-2 pointer-events-auto">
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+              <label className="min-w-[58px] shrink-0 py-2 rounded-xl bg-blue-600 text-white text-[10px] font-semibold text-center active:scale-95 cursor-pointer"><Plus size={15} className="mx-auto mb-1" />Add<input type="file" multiple accept="image/*" className="hidden" onChange={handleCustomImport} /></label>
+              <button onClick={() => activeCanvas?.undo()} disabled={!canUndo} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Undo size={15} className="mx-auto mb-1" />Undo</button>
+              <button onClick={() => activeCanvas?.redo()} disabled={!canRedo} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Redo size={15} className="mx-auto mb-1" />Redo</button>
+              {activeObject && <>
+                <button onClick={() => { activeCanvas?.discardActiveObject(); activeCanvas?.renderAll(); setActiveObject(null); }} className="min-w-[70px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold active:scale-95"><X size={15} className="mx-auto mb-1" />Deselect</button>
+                <button onClick={startCrop} disabled={activeObject.type !== 'image' || activeObject.lockMovementX} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Crop size={15} className="mx-auto mb-1" />Crop</button>
+                <button onClick={duplicateSelected} disabled={activeObject.lockMovementX} className="min-w-[70px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Copy size={15} className="mx-auto mb-1" />Duplicate</button>
+                <button onClick={toggleLock} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold active:scale-95"><Lock size={15} className="mx-auto mb-1" />{activeObject.lockMovementX ? 'Unlock' : 'Lock'}</button>
+              </>}
+              <button onClick={() => setMobileToolsOpen(true)} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold active:scale-95"><Settings size={15} className="mx-auto mb-1" />More</button>
+              <button onClick={exportCustomPDF} disabled={!!cropSessionRef.current} className="min-w-[62px] shrink-0 py-2 rounded-xl bg-white text-black text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Download size={15} className="mx-auto mb-1" />Export</button>
+            </div>
+          </div>
         </div>
       )}
-
       {appMode === 'customisable' && mobileToolsOpen && (
         <div className="xl:hidden fixed inset-0 z-[60] bg-black/60" onMouseDown={(e) => { if (e.currentTarget === e.target) setMobileToolsOpen(false); }}><div className="absolute inset-x-0 bottom-0 max-h-[82vh] overflow-y-auto rounded-t-3xl border-t border-neutral-700 bg-[#121212] shadow-2xl pb-[max(12px,env(safe-area-inset-bottom))]"><div className="sticky top-0 z-10 bg-[#121212] border-b border-neutral-800 px-4 py-3 flex items-center justify-between"><span className="text-sm font-semibold">Editor tools</span><button onClick={() => setMobileToolsOpen(false)} className="p-2 rounded-lg hover:bg-neutral-900"><X size={16} /></button></div>{activeObject ? <div className="p-4 space-y-5"><div className="grid grid-cols-2 gap-2"><button onClick={() => alignActive('left')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Left</button><button onClick={() => alignActive('centerH')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Center</button><button onClick={() => alignActive('right')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Right</button><button onClick={() => alignActive('top')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Top</button><button onClick={() => alignActive('centerV')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Middle</button><button onClick={() => alignActive('bottom')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Bottom</button></div><div className="grid grid-cols-2 gap-2"><button onClick={() => centerAndScaleActive('contain')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fit page</button><button onClick={() => centerAndScaleActive('cover')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fill page</button></div><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Proportional scaling</span><input type="checkbox" checked={activeObject.lockUniScaling !== false} onChange={toggleAspectRatioLock} className="accent-blue-500" /></label><div className="grid grid-cols-2 gap-3"><label className="bg-neutral-900 border border-neutral-800 rounded p-2"><span className="text-[10px] text-neutral-500 block mb-1">X</span><input type="number" value={Math.round(activeObject.left || 0)} onChange={(e) => handlePropertyChange('left', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label><label className="bg-neutral-900 border border-neutral-800 rounded p-2"><span className="text-[10px] text-neutral-500 block mb-1">Y</span><input type="number" value={Math.round(activeObject.top || 0)} onChange={(e) => handlePropertyChange('top', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label></div></div> : <div className="p-4 space-y-3"><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Smart snapping</span><input type="checkbox" checked={!!activeCanvas?.snapEnabled} onChange={() => toggleCanvasSetting('snapEnabled')} className="accent-blue-500" /></label><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Keep inside page</span><input type="checkbox" checked={!!activeCanvas?.boundaryLock} onChange={() => toggleCanvasSetting('boundaryLock')} className="accent-blue-500" /></label><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">15° angle snapping</span><input type="checkbox" checked={!!activeCanvas?.angleSnapEnabled} onChange={() => toggleCanvasSetting('angleSnapEnabled')} className="accent-blue-500" /></label></div>}<div className="px-4 pb-4"><label className="text-xs text-neutral-500 block mb-2">File Name</label><input type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-700 rounded p-2 text-sm focus:outline-none focus:border-blue-500" /></div></div></div>
       )}
