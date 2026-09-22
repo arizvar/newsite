@@ -133,7 +133,7 @@ const PageCanvas = ({
     initCanvas.snapThreshold = 4;
  codex/fix-mobile-image-editing-issues-z1m2hh
     initCanvas.isViewingMode = false;
-=======
+    
  main
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
