@@ -384,6 +384,13 @@ const PageCanvas = ({
       obj.setCoords();
     };
 
+    initCanvas.on('before:transform', (e) => {
+      const transform = e.transform;
+      const obj = transform?.target;
+      if (!obj || obj.cropEditor) return;
+      if (/^scale/.test(transform.action || '')) obj._scaleGestureCenter = obj.getCenterPoint();
+    });
+
     initCanvas.on('object:moving', (e) => {
       const obj = e.target;
       if (!obj || obj.cropEditor) return;
@@ -422,8 +429,14 @@ const PageCanvas = ({
         }
       }
 
+      if (obj._scaleGestureCenter) {
+        obj.setPositionByOrigin(obj._scaleGestureCenter, 'center', 'center');
+        obj.setCoords();
+      }
       clearGuides();
       constrainToPage(obj);
+      obj.setCoords();
+      obj._scaleGestureCenter = null;
       initCanvas.renderAll();
     });
 
@@ -1175,6 +1188,40 @@ export default function App() {
     });
   };
 
+  const fitAllImages = (mode) => {
+    if (cropSessionRef.current) return;
+    let changed = false;
+    Object.values(canvasRefs.current).forEach((cvs) => {
+      if (!cvs) return;
+      cvs.getObjects().filter((obj) => obj.type === 'image' && !obj.cropEditor && !obj.lockMovementX).forEach((obj) => {
+        if (!obj.width || !obj.height) return;
+        const margin = 20;
+        const targetW = cvs.width - margin * 2;
+        const targetH = cvs.height - margin * 2;
+        const scale = mode === 'cover'
+          ? Math.max(targetW / obj.width, targetH / obj.height)
+          : Math.min(targetW / obj.width, targetH / obj.height);
+        obj.set({ scaleX: scale, scaleY: scale, left: cvs.width / 2, top: cvs.height / 2 });
+        obj.setCoords();
+        cvs.constrainActiveObject?.(obj);
+        changed = true;
+      });
+      cvs.renderAll();
+      if (changed) cvs.fire('object:modified', { target: null });
+    });
+    if (changed) setHistoryTrigger((prev) => prev + 1);
+  };
+
+  const rotateActive = (degrees) => {
+    if (!activeObject || !activeCanvas || activeObject.lockMovementX || cropSessionRef.current) return;
+    activeObject.set('angle', ((activeObject.angle || 0) + degrees + 360) % 360);
+    activeObject.setCoords();
+    activeCanvas.constrainActiveObject?.(activeObject);
+    activeCanvas.renderAll();
+    activeCanvas.fire('object:modified', { target: activeObject });
+    setActiveObject(activeCanvas.getActiveObject());
+  };
+
   const centerAndScaleActive = (mode) => {
     if (!activeObject || !activeCanvas || activeObject.lockMovementX || cropSessionRef.current) return;
     if (!activeObject.width || !activeObject.height) return;
@@ -1573,8 +1620,11 @@ export default function App() {
         <div>
           <div className="p-6">
             <div className="mb-6">
-              <button onClick={goToModes} className="block text-left hover:opacity-80 transition-opacity"><img src={`${import.meta.env.BASE_URL}bareenapdfs-wordmark.svg`} alt="BareenaPDFs" className="h-auto w-[190px] max-w-full" /></button>
-              <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-widest mt-1 block">made by ariz</span>
+              <button onClick={goToModes} className="flex items-center gap-2 text-left hover:opacity-80 transition-opacity">
+                <img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="h-9 w-9 shrink-0 object-contain" />
+                <img src={`${import.meta.env.BASE_URL}bareenapdfs-wordmark.svg`} alt="BareenaPDFs" className="h-auto w-[165px] max-w-full" />
+              </button>
+              <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-widest mt-1 ml-11 block">made by ariz</span>
             </div>
 
             <div className="grid grid-cols-4 bg-neutral-900 p-1 rounded-lg border border-neutral-800 mb-6 relative">
@@ -1596,6 +1646,10 @@ export default function App() {
                   <input type="file" multiple accept="image/*" className="hidden" onChange={handleCustomImport} />
                 </label>
                 <p className="text-[11px] text-neutral-500 text-center mt-2 font-medium">Select multiple images to create editable pages.</p>
+                <div className="grid grid-cols-2 gap-2 mt-4">
+                  <button onClick={() => fitAllImages('contain')} className="flex items-center justify-center gap-1.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg py-2 text-xs"><Minimize2 size={14} /> Fit All</button>
+                  <button onClick={() => fitAllImages('cover')} className="flex items-center justify-center gap-1.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg py-2 text-xs"><Maximize2 size={14} /> Fill All</button>
+                </div>
               </>
             )}
 
@@ -1890,10 +1944,12 @@ export default function App() {
 
                 <div>
                   <h2 className="text-xs font-bold text-neutral-500 tracking-wider mb-3">ADJUSTMENTS</h2>
-                  <div className="flex gap-2">
-                    <button onClick={() => updateActive({ flipX: !activeObject.flipX })} className="flex-1 bg-neutral-900 hover:bg-neutral-800 py-2 flex justify-center rounded border border-neutral-800"><FlipHorizontal size={18} /></button>
-                    <button onClick={() => updateActive({ flipY: !activeObject.flipY })} className="flex-1 bg-neutral-900 hover:bg-neutral-800 py-2 flex justify-center rounded border border-neutral-800"><FlipVertical size={18} /></button>
-                    <button onClick={() => updateActive({ angle: 0 })} className="flex-1 bg-neutral-900 hover:bg-neutral-800 py-2 flex justify-center rounded border border-neutral-800"><RotateCcw size={18} /></button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => updateActive({ flipX: !activeObject.flipX })} className="bg-neutral-900 hover:bg-neutral-800 py-2 flex justify-center rounded border border-neutral-800"><FlipHorizontal size={18} /></button>
+                    <button onClick={() => updateActive({ flipY: !activeObject.flipY })} className="bg-neutral-900 hover:bg-neutral-800 py-2 flex justify-center rounded border border-neutral-800"><FlipVertical size={18} /></button>
+                    <button onClick={() => rotateActive(-90)} className="bg-neutral-900 hover:bg-neutral-800 py-2 flex items-center justify-center gap-1 rounded border border-neutral-800 text-xs"><RotateCcw size={16} /> Rotate Left</button>
+                    <button onClick={() => rotateActive(90)} className="bg-neutral-900 hover:bg-neutral-800 py-2 flex items-center justify-center gap-1 rounded border border-neutral-800 text-xs"><RotateCcw size={16} className="scale-x-[-1]" /> Rotate Right</button>
+                    <button onClick={() => updateActive({ angle: 0 })} className="col-span-2 bg-neutral-900 hover:bg-neutral-800 py-2 flex items-center justify-center gap-2 rounded border border-neutral-800 text-xs"><RotateCcw size={16} /> Reset Rotation</button>
                   </div>
                 </div>
 
@@ -1960,7 +2016,10 @@ export default function App() {
         </div>
       )}
       {appMode === 'customisable' && mobileToolsOpen && (
-        <div className="xl:hidden fixed inset-0 z-[60] bg-black/60" onMouseDown={(e) => { if (e.currentTarget === e.target) setMobileToolsOpen(false); }}><div className="absolute inset-x-0 bottom-0 max-h-[82vh] overflow-y-auto rounded-t-3xl border-t border-neutral-700 bg-[#121212] shadow-2xl pb-[max(12px,env(safe-area-inset-bottom))]"><div className="sticky top-0 z-10 bg-[#121212] border-b border-neutral-800 px-4 py-3 flex items-center justify-between"><span className="text-sm font-semibold">Editor tools</span><button onClick={() => setMobileToolsOpen(false)} className="p-2 rounded-lg hover:bg-neutral-900"><X size={16} /></button></div>{activeObject ? <div className="p-4 space-y-5"><div className="grid grid-cols-2 gap-2"><button onClick={() => alignActive('left')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Left</button><button onClick={() => alignActive('centerH')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Center</button><button onClick={() => alignActive('right')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Right</button><button onClick={() => alignActive('top')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Top</button><button onClick={() => alignActive('centerV')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Middle</button><button onClick={() => alignActive('bottom')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Bottom</button></div><div className="grid grid-cols-2 gap-2"><button onClick={() => centerAndScaleActive('contain')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fit page</button><button onClick={() => centerAndScaleActive('cover')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fill page</button></div><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Proportional scaling</span><input type="checkbox" checked={activeObject.lockUniScaling !== false} onChange={toggleAspectRatioLock} className="accent-blue-500" /></label><div className="grid grid-cols-2 gap-3"><label className="bg-neutral-900 border border-neutral-800 rounded p-2"><span className="text-[10px] text-neutral-500 block mb-1">X</span><input type="number" value={Math.round(activeObject.left || 0)} onChange={(e) => handlePropertyChange('left', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label><label className="bg-neutral-900 border border-neutral-800 rounded p-2"><span className="text-[10px] text-neutral-500 block mb-1">Y</span><input type="number" value={Math.round(activeObject.top || 0)} onChange={(e) => handlePropertyChange('top', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label></div></div> : <div className="p-4 space-y-3"><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Smart snapping</span><input type="checkbox" checked={!!activeCanvas?.snapEnabled} onChange={() => toggleCanvasSetting('snapEnabled')} className="accent-blue-500" /></label><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Keep inside page</span><input type="checkbox" checked={!!activeCanvas?.boundaryLock} onChange={() => toggleCanvasSetting('boundaryLock')} className="accent-blue-500" /></label><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">15° angle snapping</span><input type="checkbox" checked={!!activeCanvas?.angleSnapEnabled} onChange={() => toggleCanvasSetting('angleSnapEnabled')} className="accent-blue-500" /></label></div>}<div className="px-4 pb-4"><label className="text-xs text-neutral-500 block mb-2">File Name</label><input type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-700 rounded p-2 text-sm focus:outline-none focus:border-blue-500" /></div></div></div>
+        <div className="xl:hidden fixed inset-0 z-[60] bg-black/60" onMouseDown={(e) => { if (e.currentTarget === e.target) setMobileToolsOpen(false); }}><div className="absolute inset-x-0 bottom-0 max-h-[82vh] overflow-y-auto rounded-t-3xl border-t border-neutral-700 bg-[#121212] shadow-2xl pb-[max(12px,env(safe-area-inset-bottom))]"><div className="sticky top-0 z-10 bg-[#121212] border-b border-neutral-800 px-4 py-3 flex items-center justify-between"><span className="text-sm font-semibold">Editor tools</span><button onClick={() => setMobileToolsOpen(false)} className="p-2 rounded-lg hover:bg-neutral-900"><X size={16} /></button></div>{activeObject ? <div className="p-4 space-y-5"><div className="grid grid-cols-2 gap-2">
+<button onClick={() => rotateActive(-90)} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs flex items-center justify-center gap-1"><RotateCcw size={14} /> Rotate Left</button>
+<button onClick={() => rotateActive(90)} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs flex items-center justify-center gap-1"><RotateCcw size={14} className="scale-x-[-1]" /> Rotate Right</button>
+</div><div className="grid grid-cols-2 gap-2"><button onClick={() => alignActive('left') className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Left</button><button onClick={() => alignActive('centerH')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Center</button><button onClick={() => alignActive('right')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Right</button><button onClick={() => alignActive('top')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Top</button><button onClick={() => alignActive('centerV')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Middle</button><button onClick={() => alignActive('bottom')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Bottom</button></div><div className="grid grid-cols-2 gap-2"><button onClick={() => fitAllImages('contain')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fit All</button><button onClick={() => fitAllImages('cover')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fill All</button></div><div className="grid grid-cols-2 gap-2"><button onClick={() => centerAndScaleActive('contain') className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fit page</button><button onClick={() => centerAndScaleActive('cover')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fill page</button></div><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Proportional scaling</span><input type="checkbox" checked={activeObject.lockUniScaling !== false} onChange={toggleAspectRatioLock} className="accent-blue-500" /></label><div className="grid grid-cols-2 gap-3"><label className="bg-neutral-900 border border-neutral-800 rounded p-2"><span className="text-[10px] text-neutral-500 block mb-1">X</span><input type="number" value={Math.round(activeObject.left || 0)} onChange={(e) => handlePropertyChange('left', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label><label className="bg-neutral-900 border border-neutral-800 rounded p-2"><span className="text-[10px] text-neutral-500 block mb-1">Y</span><input type="number" value={Math.round(activeObject.top || 0)} onChange={(e) => handlePropertyChange('top', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label></div></div> : <div className="p-4 space-y-3"><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Smart snapping</span><input type="checkbox" checked={!!activeCanvas?.snapEnabled} onChange={() => toggleCanvasSetting('snapEnabled')} className="accent-blue-500" /></label><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Keep inside page</span><input type="checkbox" checked={!!activeCanvas?.boundaryLock} onChange={() => toggleCanvasSetting('boundaryLock')} className="accent-blue-500" /></label><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">15° angle snapping</span><input type="checkbox" checked={!!activeCanvas?.angleSnapEnabled} onChange={() => toggleCanvasSetting('angleSnapEnabled')} className="accent-blue-500" /></label></div>}<div className="px-4 pb-4"><label className="text-xs text-neutral-500 block mb-2">File Name</label><input type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-700 rounded p-2 text-sm focus:outline-none focus:border-blue-500" /></div></div></div>
       )}
 
       {appMode === 'autofit' && (
