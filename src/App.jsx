@@ -130,11 +130,8 @@ const PageCanvas = ({
     initCanvas.angleSnapStep = 15;
     // Keep the capture range deliberately tight: guides should assist an
     // alignment, not make horizontal or vertical movement feel magnetic.
-    initCanvas.snapThreshold = 4;
- codex/fix-mobile-image-editing-issues-z1m2hh
+    initCanvas.snapThreshold = 7;
     initCanvas.isViewingMode = false;
-    
- main
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
     initCanvas.perPixelTargetFind = false;
@@ -205,7 +202,7 @@ const PageCanvas = ({
         const screen = canvasPointToScreen(point);
         // These are CSS-pixel hit targets, rather than canvas units. They
         // remain finger-sized even when the A4 page is CSS-scaled on a phone.
-        const tolerance = name === 'mtr' ? 72 : 38;
+        const tolerance = name === 'mtr' ? 96 : 48;
         if (Math.hypot(touch.clientX - screen.x, touch.clientY - screen.y) <= tolerance) {
           return name;
         }
@@ -224,7 +221,7 @@ const PageCanvas = ({
           x: topMidScreen.x + (dx / len) * 34,
           y: topMidScreen.y + (dy / len) * 34,
         };
-        if (Math.hypot(touch.clientX - rotationScreen.x, touch.clientY - rotationScreen.y) <= 72) {
+        if (Math.hypot(touch.clientX - rotationScreen.x, touch.clientY - rotationScreen.y) <= 96) {
           return 'mtr';
         }
       }
