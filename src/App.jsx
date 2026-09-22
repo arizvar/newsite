@@ -127,7 +127,7 @@ const PageCanvas = ({
     initCanvas.boundaryLock = false;
     initCanvas.angleSnapEnabled = true;
     initCanvas.angleSnapStep = 15;
-    initCanvas.snapThreshold = 8;
+    initCanvas.snapThreshold = 10;
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
     initCanvas.perPixelTargetFind = false;
@@ -204,7 +204,7 @@ const PageCanvas = ({
         const point = controls[name];
         if (!point) continue;
         const screen = canvasPointToScreen(point);
-        const tolerance = name === 'mtr' ? 96 : 48;
+        const tolerance = name === 'mtr' ? 132 : 48;
         if (Math.hypot(touch.clientX - screen.x, touch.clientY - screen.y) <= tolerance) {
           return name;
         }
