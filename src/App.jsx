@@ -2440,43 +2440,37 @@ export default function App() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-6 gap-1.5">
-                  {!viewingMode ? (
+                {viewingMode ? (
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button onClick={() => setViewingMode(false)} className="py-2.5 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[10px] font-semibold">
+                      <EyeOff size={15} className="mx-auto mb-0.5" />Edit
+                    </button>
+                    <button onClick={() => setViewingMode(true)} className="py-2.5 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[10px] font-semibold">
+                      <Eye size={15} className="mx-auto mb-0.5" />Viewing
+                    </button>
+                    <button onClick={exportCustomPDF} disabled={!!cropSessionRef.current} className="py-2.5 rounded-xl bg-white text-black text-[10px] font-semibold disabled:opacity-30">
+                      <Download size={15} className="mx-auto mb-0.5" />Export
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-6 gap-1.5">
                     <label className="py-2.5 rounded-xl bg-blue-600 text-white text-[10px] font-semibold text-center cursor-pointer">
                       <Plus size={15} className="mx-auto mb-0.5" />Add
                       <input type="file" multiple accept="image/*" className="hidden" onChange={handleCustomImport} />
                     </label>
-                  ) : (
-                    <button onClick={() => setViewingMode(false)} className="py-2.5 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[10px] font-semibold">
-                      <EyeOff size={15} className="mx-auto mb-0.5" />Edit
+                    <button onClick={() => activeCanvas?.undo()} disabled={!canUndo} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30"><Undo size={15} className="mx-auto mb-0.5" />Undo</button>
+                    <button onClick={() => activeCanvas?.redo()} disabled={!canRedo} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30"><Redo size={15} className="mx-auto mb-0.5" />Redo</button>
+                    <button onClick={() => setViewingMode(true)} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold">
+                      <Eye size={15} className="mx-auto mb-0.5" />View
                     </button>
-                  )}
-                  {!viewingMode ? (
-                    <>
-                      <button onClick={() => activeCanvas?.undo()} disabled={!canUndo} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30"><Undo size={15} className="mx-auto mb-0.5" />Undo</button>
-                      <button onClick={() => activeCanvas?.redo()} disabled={!canRedo} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30"><Redo size={15} className="mx-auto mb-0.5" />Redo</button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="py-2.5 rounded-xl bg-transparent" />
-                      <div className="py-2.5 rounded-xl bg-transparent" />
-                    </>
-                  )}
-                  <button onClick={() => setViewingMode((mode) => !mode)} className={`py-2.5 rounded-xl border text-[10px] font-semibold ${viewingMode ? 'bg-blue-500/15 border-blue-500/30 text-blue-400' : 'bg-neutral-900 border-neutral-800 text-neutral-300'}`}>
-                    {viewingMode ? <EyeOff size={15} className="mx-auto mb-0.5" /> : <Eye size={15} className="mx-auto mb-0.5" />}
-                    {viewingMode ? 'Viewing' : 'View'}
-                  </button>
-                  {!viewingMode ? (
                     <button onClick={() => setMobileToolsOpen(true)} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold">
                       <Settings size={15} className="mx-auto mb-0.5" />More
                     </button>
-                  ) : (
-                    <div className="py-2.5 rounded-xl bg-transparent" />
-                  )}
-                  <button onClick={exportCustomPDF} disabled={!!cropSessionRef.current} className="py-2.5 rounded-xl bg-white text-black text-[10px] font-semibold disabled:opacity-30">
-                    <Download size={15} className="mx-auto mb-0.5" />Export
-                  </button>
-                </div>
+                    <button onClick={exportCustomPDF} disabled={!!cropSessionRef.current} className="py-2.5 rounded-xl bg-white text-black text-[10px] font-semibold disabled:opacity-30">
+                      <Download size={15} className="mx-auto mb-0.5" />Export
+                    </button>
+                  </div>
+                )}                </div>
               </>
             )}
           </div>
