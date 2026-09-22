@@ -305,7 +305,7 @@ const PageCanvas = ({
         mobileTouch.mode = 'rotate';
         mobileTouch.center = target.getCenterPoint();
         mobileTouch.startAngle = target.angle || 0;
-      } else if (handle && !target.lockScalingX && !target.cropEditor) {
+      } else if (handle && !target.lockScalingX) {
         e.preventDefault();
         mobileTouch.mode = 'scale';
         mobileTouch.center = target.getCenterPoint();
