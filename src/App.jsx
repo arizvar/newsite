@@ -165,11 +165,12 @@ const PageCanvas = ({
     // keeps Fabric's own scaling/rotation/crop gesture pipeline intact.
     const getControlCorner = (e, target) => {
       if (!target || initCanvas.getActiveObject() !== target) return null;
-      if (typeof initCanvas._findTargetCorner !== 'function') return null;
+      if (typeof target._findTargetCorner !== 'function') return null;
 
       try {
+        // Fabric 5 performs control hit-testing on the object itself.
         const pointer = initCanvas.getPointer(e, true);
-        return initCanvas._findTargetCorner(pointer, target);
+        return target._findTargetCorner(pointer);
       } catch {
         return null;
       }
