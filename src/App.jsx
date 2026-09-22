@@ -1772,7 +1772,7 @@ export default function App() {
       clipPath: null,
       selectable: true,
       evented: true,
-      lockUniScaling: true,
+      lockUniScaling: false,
     });
 
     // Re-enable normal editor state.
