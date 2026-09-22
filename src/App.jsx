@@ -133,7 +133,7 @@ const PageCanvas = ({
     setCanvasTouchMode(false);
 
     // On phones, normal finger movement should scroll the page.
-    // An object only becomes draggable after a deliberate 320ms hold.
+    // An object only becomes draggable after a deliberate 800ms hold.
     const touchState = { timer: null, target: null, startX: 0, startY: 0, lastX: 0, lastY: 0, dragging: false };
     const clearTouchHold = () => {
       if (touchState.timer) window.clearTimeout(touchState.timer);
@@ -160,7 +160,7 @@ const PageCanvas = ({
         onSetActive(initCanvas, touchState.target, page.id);
         setCanvasTouchMode(true);
         initCanvas.renderAll();
-      }, 320);
+      }, 800);
     };
 
     const onTouchMove = (e) => {
