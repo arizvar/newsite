@@ -7,8 +7,7 @@ import {
   Image as ImageIcon, Download, Trash2, Layers, MoveUp, MoveDown,
   Lock, Unlock, FlipHorizontal, FlipVertical, Undo, Redo, Plus,
   LayoutTemplate, Maximize, GripHorizontal, FileText, Loader2,
-  Crop, Copy, RotateCcw, AlignCenterHorizontal, AlignCenterVertical,
-  Maximize2, Minimize2, Magnet, Move, Check, X, Ratio, Crosshair,
+  Crop, Copy, RotateCcw, Maximize2, Minimize2, Check, X, Ratio, Crosshair,
   FilePlus2, Menu, Settings, Eye, EyeOff
 } from 'lucide-react';
 
@@ -132,6 +131,10 @@ const PageCanvas = ({
     // Keep the capture range deliberately tight: guides should assist an
     // alignment, not make horizontal or vertical movement feel magnetic.
     initCanvas.snapThreshold = 4;
+ codex/fix-mobile-image-editing-issues-z1m2hh
+    initCanvas.isViewingMode = false;
+=======
+ main
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
     initCanvas.perPixelTargetFind = false;
@@ -772,6 +775,8 @@ const PageCanvas = ({
           scaleY: scale,
           lockUniScaling: true,
           centeredScaling: false,
+          selectable: !initCanvas.isViewingMode,
+          evented: !initCanvas.isViewingMode,
         });
         initCanvas.add(img);
         initCanvas.renderAll();
@@ -792,6 +797,7 @@ const PageCanvas = ({
   useEffect(() => {
     if (!canvas) return;
 
+    canvas.isViewingMode = !!viewingMode;
     canvas.skipTargetFind = !!viewingMode;
     canvas.selection = !viewingMode;
     canvas.getObjects().forEach((obj) => {
@@ -823,7 +829,7 @@ const PageCanvas = ({
   const handleLocalLayerAdd = async (e) => {
     const file = e.target.files[0];
     e.target.value = '';
-    if (!file || !canvas) return;
+    if (!file || !canvas || canvas.isViewingMode) return;
 
     const dataUrl = await readFileAsDataURL(file);
     fabric.Image.fromURL(dataUrl, (img) => {
@@ -837,9 +843,11 @@ const PageCanvas = ({
         scaleY: scale,
         lockUniScaling: true,
         centeredScaling: false,
+        selectable: !canvas.isViewingMode,
+        evented: !canvas.isViewingMode,
       });
       canvas.add(img);
-      canvas.setActiveObject(img);
+      if (!canvas.isViewingMode) canvas.setActiveObject(img);
       canvas.renderAll();
     });
   };
@@ -901,7 +909,7 @@ const PageCanvas = ({
       className={`flex flex-col items-center mb-12 transition-all ${isActivePage ? 'scale-[1.02]' : 'scale-100 opacity-90 hover:opacity-100'}`}
     >
       <div
-        className="page-toolbar w-full max-w-[600px] flex justify-between items-center mb-3 px-1 sm:px-2 text-neutral-400 cursor-grab active:cursor-grabbing"
+        className="page-toolbar w-full max-w-[600px] flex flex-wrap justify-between items-center gap-2 mb-3 px-1 sm:px-2 text-neutral-400 cursor-grab active:cursor-grabbing"
         onMouseEnter={() => setIsDraggable(true)}
         onMouseLeave={() => setIsDraggable(false)}
       >
@@ -909,7 +917,7 @@ const PageCanvas = ({
           <GripHorizontal size={18} />
           <span className="font-bold text-sm tracking-widest uppercase">Page {pageIndex + 1}</span>
         </div>
-        <div className="flex gap-2 items-center" onMouseEnter={() => setIsDraggable(false)}>
+        <div className="flex flex-wrap justify-end gap-2 items-center" onMouseEnter={() => setIsDraggable(false)}>
           <button
             onClick={() => toggleOrientation(page.id)} disabled={viewingMode}
             className="flex items-center gap-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-semibold px-2.5 py-1.5 rounded transition-colors border border-neutral-800"
@@ -971,6 +979,21 @@ export default function App() {
 
   useEffect(() => {
     if (!viewingMode) return;
+
+    // Viewing Mode can be entered while crop mode is open. Tear down the
+    // temporary crop editor first so a hidden crop rectangle cannot remain
+    // interactive or leave its source image disabled when editing resumes.
+    const crop = cropSessionRef.current;
+    if (crop) {
+      crop.image.clipPath = crop.originalClipPath;
+      crop.image.selectable = true;
+      crop.image.evented = true;
+      crop.canvas.remove(crop.cropRect);
+      crop.canvas._isCropping = false;
+      cropSessionRef.current = null;
+      setCropSession(null);
+    }
+
     Object.values(canvasRefs.current).forEach((cvs) => {
       if (cvs) {
         cvs.discardActiveObject();
@@ -1522,7 +1545,7 @@ export default function App() {
   };
 
   const toggleCanvasSetting = (setting) => {
-    if (!activeCanvas) return;
+    if (!activeCanvas || viewingMode) return;
     activeCanvas[setting] = !activeCanvas[setting];
     setHistoryTrigger((prev) => prev + 1);
     activeCanvas.renderAll();
@@ -1716,7 +1739,7 @@ export default function App() {
   };
 
   const startCrop = () => {
-    if (!activeObject || !activeCanvas || activeObject.type !== 'image' || activeObject.lockMovementX) return;
+    if (viewingMode || !activeObject || !activeCanvas || activeObject.type !== 'image' || activeObject.lockMovementX) return;
     if (cropSessionRef.current) return;
     if (activeObject.clipPath) {
       alert('This image already has a crop. Apply the current crop before cropping it again.');
@@ -1861,7 +1884,6 @@ export default function App() {
     const imageW = Math.abs(session.image.getScaledWidth());
     const imageH = Math.abs(session.image.getScaledHeight());
     const currentW = session.cropRect.getScaledWidth();
-    const currentH = session.cropRect.getScaledHeight();
 
     let targetW = currentW;
     let targetH = targetW / numericRatio;
@@ -2504,6 +2526,14 @@ export default function App() {
               </div>
             ) : activeObject ? (
               <div className="p-4 space-y-4">
+                <div>
+                  <div className="text-[10px] font-bold text-neutral-500 tracking-wider mb-2">LAYER</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button onClick={() => updateActive({ flipX: !activeObject.flipX })} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5"><FlipHorizontal size={14} /> Flip H</button>
+                    <button onClick={() => updateActive({ flipY: !activeObject.flipY })} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5"><FlipVertical size={14} /> Flip V</button>
+                    <button onClick={deleteSelected} disabled={activeObject.lockMovementX} className="bg-red-500/10 border border-red-500/20 text-red-400 py-2.5 rounded-xl text-xs disabled:opacity-30 flex items-center justify-center gap-1.5"><Trash2 size={14} /> Delete</button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => rotateActive(-90)} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5"><RotateCcw size={14} /> Rotate Left</button>
                   <button onClick={() => rotateActive(90)} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5"><RotateCcw size={14} className="scale-x-[-1]" /> Rotate Right</button>
@@ -2539,6 +2569,14 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-2">
                     <label className="bg-neutral-900 border border-neutral-800 rounded-xl p-2.5"><span className="text-[10px] text-neutral-500 block mb-1">X</span><input type="number" value={Math.round(activeObject.left || 0)} onChange={(e) => handlePropertyChange('left', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label>
                     <label className="bg-neutral-900 border border-neutral-800 rounded-xl p-2.5"><span className="text-[10px] text-neutral-500 block mb-1">Y</span><input type="number" value={Math.round(activeObject.top || 0)} onChange={(e) => handlePropertyChange('top', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-neutral-500 tracking-wider mb-2">CANVAS</div>
+                  <div className="space-y-2">
+                    <label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3"><span className="text-xs">Smart snapping</span><input type="checkbox" checked={!!activeCanvas?.snapEnabled} onChange={() => toggleCanvasSetting('snapEnabled')} className="accent-blue-500" /></label>
+                    <label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3"><span className="text-xs">Keep inside page</span><input type="checkbox" checked={!!activeCanvas?.boundaryLock} onChange={() => toggleCanvasSetting('boundaryLock')} className="accent-blue-500" /></label>
+                    <label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3"><span className="text-xs">15° angle snapping</span><input type="checkbox" checked={!!activeCanvas?.angleSnapEnabled} onChange={() => toggleCanvasSetting('angleSnapEnabled')} className="accent-blue-500" /></label>
                   </div>
                 </div>
               </div>
