@@ -9,7 +9,7 @@ import {
   LayoutTemplate, Maximize, GripHorizontal, FileText, Loader2,
   Crop, Copy, RotateCcw, AlignCenterHorizontal, AlignCenterVertical,
   Maximize2, Minimize2, Magnet, Move, Check, X, Ratio, Crosshair,
-  FilePlus2, Menu, Settings
+  FilePlus2, Menu, Settings, Eye, EyeOff
 } from 'lucide-react';
 
 // Initialize PDF.js worker
@@ -70,7 +70,7 @@ const PageCanvas = ({
   page, pageIndex, totalPages,
   onSetActive, activeCanvasId,
   moveUp, moveDown, deletePage, toggleOrientation, registerCanvas,
-  onDragStart, onDragEnter, onDragEnd
+  onDragStart, onDragEnter, onDragEnd, viewingMode
 }) => {
   const canvasRef = useRef(null);
   const [canvas, setCanvas] = useState(null);
@@ -481,6 +481,17 @@ const PageCanvas = ({
 
     // Only use native touch handling for actual gestures. Blank canvas touches
     // never stop propagation or preventDefault, so the surrounding page scrolls normally.
+    if (viewingMode) {
+      initCanvas.selection = false;
+      initCanvas.skipTargetFind = true;
+      initCanvas.getObjects().forEach((obj) => {
+        obj.selectable = false;
+        obj.evented = false;
+      });
+      initCanvas.discardActiveObject();
+      initCanvas.renderAll();
+    }
+
     registerCanvas(page.id, initCanvas);
 
     initCanvas.history = [];
@@ -787,6 +798,25 @@ const PageCanvas = ({
   }, [page.id, page.initialImage]);
 
   useEffect(() => {
+    if (!canvas) return;
+
+    canvas.skipTargetFind = !!viewingMode;
+    canvas.selection = !viewingMode;
+    canvas.getObjects().forEach((obj) => {
+      if (obj.cropEditor) return;
+      obj.selectable = !viewingMode;
+      obj.evented = !viewingMode;
+    });
+
+    if (viewingMode) {
+      canvas.discardActiveObject();
+      onSetActive(canvas, null, page.id);
+    }
+
+    canvas.renderAll();
+  }, [canvas, viewingMode]);
+
+  useEffect(() => {
     const updatePageScale = () => {
       const pageWidth = page.orientation === 'landscape' ? 848 : 600;
       const availableWidth = Math.max(240, Math.min(540, window.innerWidth - 48));
@@ -871,7 +901,7 @@ const PageCanvas = ({
 
   return (
     <div
-      draggable={isDraggable}
+      draggable={viewingMode ? false : isDraggable}
       onDragStart={onDragStart}
       onDragEnter={onDragEnter}
       onDragEnd={onDragEnd}
@@ -889,19 +919,19 @@ const PageCanvas = ({
         </div>
         <div className="flex gap-2 items-center" onMouseEnter={() => setIsDraggable(false)}>
           <button
-            onClick={() => toggleOrientation(page.id)}
+            onClick={() => toggleOrientation(page.id)} disabled={viewingMode}
             className="flex items-center gap-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-semibold px-2.5 py-1.5 rounded transition-colors border border-neutral-800"
             title={page.orientation === 'landscape' ? 'Switch to portrait' : 'Switch to landscape'}
           >
             <Ratio size={14} /> {page.orientation === 'landscape' ? 'Portrait' : 'Landscape'}
           </button>
-          <label className="flex items-center gap-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-semibold px-3 py-1.5 rounded cursor-pointer transition-colors mr-3 border border-blue-500/20">
+          <label className={`flex items-center gap-1.5 bg-blue-500/10${viewingMode ? ' opacity-30 pointer-events-none' : ''} hover:bg-blue-500/20 text-blue-400 text-xs font-semibold px-3 py-1.5 rounded cursor-pointer transition-colors mr-3 border border-blue-500/20`}>
             <Plus size={14} /> Add Layer
             <input type="file" accept="image/*" className="hidden" onChange={handleLocalLayerAdd} />
           </label>
-          <button onClick={() => moveUp(page.id)} disabled={pageIndex === 0} className="p-1.5 hover:bg-neutral-800 rounded disabled:opacity-30"><MoveUp size={16} /></button>
-          <button onClick={() => moveDown(page.id)} disabled={pageIndex === totalPages - 1} className="p-1.5 hover:bg-neutral-800 rounded disabled:opacity-30"><MoveDown size={16} /></button>
-          <button onClick={() => deletePage(page.id)} className="p-1.5 hover:bg-red-500/20 text-red-500 rounded ml-2"><Trash2 size={16} /></button>
+          <button onClick={() => moveUp(page.id)} disabled={viewingMode || pageIndex === 0} className="p-1.5 hover:bg-neutral-800 rounded disabled:opacity-30"><MoveUp size={16} /></button>
+          <button onClick={() => moveDown(page.id)} disabled={viewingMode || pageIndex === totalPages - 1} className="p-1.5 hover:bg-neutral-800 rounded disabled:opacity-30"><MoveDown size={16} /></button>
+          <button onClick={() => deletePage(page.id)} disabled={viewingMode} className="p-1.5 hover:bg-red-500/20 text-red-500 rounded ml-2"><Trash2 size={16} /></button>
         </div>
       </div>
       <div
@@ -937,6 +967,7 @@ export default function App() {
   const [mergeFiles, setMergeFiles] = useState([]);
   const [isMergeBusy, setIsMergeBusy] = useState(false);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const [viewingMode, setViewingMode] = useState(false);
   const [fileName, setFileName] = useState(`BPDF_${Math.floor(Date.now() / 1000)}`);
 
   const modeOptions = [
@@ -945,6 +976,29 @@ export default function App() {
     { id: 'pdf2img', label: 'PDF → Img', description: 'Extract every PDF page as a high-quality image.', Icon: ImageIcon, accent: 'purple' },
     { id: 'merge', label: 'Merge PDFs', description: 'Arrange PDF files and combine them into one document.', Icon: FilePlus2, accent: 'orange' },
   ];
+
+  useEffect(() => {
+    if (!viewingMode) return;
+    Object.values(canvasRefs.current).forEach((cvs) => {
+      if (cvs) {
+        cvs.discardActiveObject();
+        cvs.selection = false;
+        cvs.skipTargetFind = true;
+        cvs.getObjects().forEach((obj) => {
+          if (obj.cropEditor) return;
+          obj.selectable = false;
+          obj.evented = false;
+        });
+        cvs.renderAll();
+      }
+    });
+    setActiveCanvas(null);
+    setActiveObject(null);
+    setActiveCanvasId(null);
+    setCropSession(null);
+    cropSessionRef.current = null;
+    setMobileToolsOpen(false);
+  }, [viewingMode]);
 
   const goToModes = () => {
     Object.values(canvasRefs.current).forEach((cvs) => {
@@ -1033,7 +1087,7 @@ export default function App() {
 
   // --- KEYBOARD CONTROLS ---
   useEffect(() => {
-    if (appMode !== 'customisable') return;
+    if (appMode !== 'customisable' || viewingMode) return;
 
     const handleKeyDown = (e) => {
       if (e.target?.tagName?.toLowerCase() === 'input') return;
@@ -1100,7 +1154,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [activeCanvas, activeObject, appMode]);
+  }, [activeCanvas, activeObject, appMode, viewingMode]);
 
   const handleWorkspaceClick = (e) => {
     if (cropSessionRef.current) return;
@@ -1966,6 +2020,7 @@ export default function App() {
           <button onClick={goToModes} className="p-2 -ml-1 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Back to modes"><LayoutTemplate size={16} /></button>
           <div className="h-9 w-9 shrink-0 rounded-xl bg-neutral-950 border border-neutral-700 p-1 shadow-lg"><img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="h-full w-full object-contain" /></div>
           <div className="min-w-0 flex-1"><img src={`${import.meta.env.BASE_URL}bareenapdfs-wordmark.svg`} alt="BareenaPDFs" className="h-auto w-[132px] max-w-full" /><div className="text-[9px] font-semibold text-neutral-500 uppercase tracking-widest mt-1">made by ariz</div></div>
+          <button onClick={() => setViewingMode((mode) => !mode)} className={`p-2 rounded-lg border active:scale-95 ${viewingMode ? 'bg-blue-500/15 border-blue-500/30 text-blue-400' : 'bg-neutral-900 border-neutral-800 text-neutral-300'}`} aria-label={viewingMode ? 'Exit viewing mode' : 'Enter viewing mode'}>{viewingMode ? <EyeOff size={17} /> : <Eye size={17} />}</button>
           <button onClick={() => setMobileToolsOpen((open) => !open)} className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Open tools"><Menu size={17} /></button>
         </div>
       </div>
@@ -1991,20 +2046,27 @@ export default function App() {
 
             {appMode === 'customisable' && (
               <>
-                <div className="flex gap-2 bg-neutral-900 p-1 rounded-lg border border-neutral-800 mb-4">
+                <button
+                  onClick={() => setViewingMode((mode) => !mode)}
+                  className={`flex items-center justify-center gap-2 w-full mb-3 py-2.5 rounded-lg border text-sm font-semibold transition-colors ${viewingMode ? 'bg-blue-500/15 border-blue-500/30 text-blue-400' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}
+                >
+                  {viewingMode ? <EyeOff size={17} /> : <Eye size={17} />}
+                  {viewingMode ? 'Exit Viewing Mode' : 'Viewing Mode'}
+                </button>
+                {!viewingMode && <div className="flex gap-2 bg-neutral-900 p-1 rounded-lg border border-neutral-800 mb-4">
                   <button onClick={() => activeCanvas?.undo()} disabled={!canUndo} className="flex-1 flex items-center justify-center gap-2 py-2 hover:bg-neutral-800 rounded disabled:opacity-30 text-sm transition-colors"><Undo size={16} /> Undo</button>
                   <div className="w-px bg-neutral-800" />
                   <button onClick={() => activeCanvas?.redo()} disabled={!canRedo} className="flex-1 flex items-center justify-center gap-2 py-2 hover:bg-neutral-800 rounded disabled:opacity-30 text-sm transition-colors"><Redo size={16} /> Redo</button>
-                </div>
-                <label className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 rounded-lg cursor-pointer transition-all active:scale-95 shadow-lg shadow-blue-900/20">
+                </div>}
+                {!viewingMode && <label className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 rounded-lg cursor-pointer transition-all active:scale-95 shadow-lg shadow-blue-900/20">
                   <ImageIcon size={20} /> <span>Import Images</span>
                   <input type="file" multiple accept="image/*" className="hidden" onChange={handleCustomImport} />
-                </label>
+                </label>}
                 <p className="text-[11px] text-neutral-500 text-center mt-2 font-medium">Select multiple images to create editable pages.</p>
-                <div className="grid grid-cols-2 gap-2 mt-4">
+                {!viewingMode && <div className="grid grid-cols-2 gap-2 mt-4">
                   <button onClick={() => fitAllImages('contain')} className="flex items-center justify-center gap-1.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg py-2 text-xs"><Minimize2 size={14} /> Fit All</button>
                   <button onClick={() => fitAllImages('cover')} className="flex items-center justify-center gap-1.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg py-2 text-xs"><Maximize2 size={14} /> Fill All</button>
-                </div>
+                </div>}
               </>
             )}
 
@@ -2090,11 +2152,12 @@ export default function App() {
                 onDragStart={() => dragItem.current = index}
                 onDragEnter={() => dragOverItem.current = index}
                 onDragEnd={handleSortPages}
+                viewingMode={viewingMode}
               />
             ))}
-            <button onClick={addBlankPage} className="mb-20 mt-4 flex items-center gap-2 text-neutral-500 hover:text-white transition-colors py-2 px-4 rounded-full border border-neutral-800 hover:border-neutral-600 bg-neutral-900/50">
+            {!viewingMode && <button onClick={addBlankPage} className="mb-20 mt-4 flex items-center gap-2 text-neutral-500 hover:text-white transition-colors py-2 px-4 rounded-full border border-neutral-800 hover:border-neutral-600 bg-neutral-900/50">
               <Plus size={16} /> Add Blank Page
-            </button>
+            </button>}
           </div>
         </div>
       )}
