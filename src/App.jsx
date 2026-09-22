@@ -536,7 +536,7 @@ const PageCanvas = ({
       initCanvas.upperCanvasEl?.removeEventListener('touchcancel', onTouchEnd, true);
       initCanvas.dispose();
     };
-  }, [page.id, page.initialImage, page.orientation]);
+  }, [page.id, page.initialImage]);
 
   useEffect(() => {
     const updatePageScale = () => {
@@ -574,13 +574,31 @@ const PageCanvas = ({
     });
   };
 
+  const orientationRef = useRef(page.orientation || 'portrait');
+
   useEffect(() => {
     if (!canvas) return;
-    const cssWidth = 600 * pageScale;
-    const cssHeight = 848 * pageScale;
 
-    // Keep Fabric's wrapper and both drawing layers in the same scaled A4 box.
-    // Otherwise the wrapper can retain the old 600x848 size and shift/crop the page on phones.
+    const oldWidth = orientationRef.current === 'landscape' ? 848 : 600;
+    const oldHeight = orientationRef.current === 'landscape' ? 600 : 848;
+    const pageWidth = page.orientation === 'landscape' ? 848 : 600;
+    const pageHeight = page.orientation === 'landscape' ? 600 : 848;
+
+    if (oldWidth !== pageWidth || oldHeight !== pageHeight) {
+      canvas.setDimensions({ width: pageWidth, height: pageHeight });
+
+      canvas.getObjects().forEach((obj) => {
+        if (obj.isGuide || obj.cropEditor) return;
+        obj.left *= pageWidth / oldWidth;
+        obj.top *= pageHeight / oldHeight;
+        obj.setCoords();
+      });
+      orientationRef.current = page.orientation || 'portrait';
+    }
+
+    const cssWidth = pageWidth * pageScale;
+    const cssHeight = pageHeight * pageScale;
+
     canvas.setDimensions({ width: cssWidth, height: cssHeight }, { cssOnly: true });
     if (canvas.wrapperEl) {
       canvas.wrapperEl.style.width = cssWidth + 'px';
@@ -599,7 +617,7 @@ const PageCanvas = ({
     }
     canvas.calcOffset();
     canvas.renderAll();
-  }, [canvas, pageScale]);
+  }, [canvas, pageScale, page.orientation]);
 
   const isActivePage = activeCanvasId === page.id;
 
