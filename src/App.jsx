@@ -1010,6 +1010,7 @@ export default function App() {
     setCropSession(null);
     cropSessionRef.current = null;
     setMobileToolsOpen(false);
+    setViewingMode(false);
     setAppMode(null);
   };
 
