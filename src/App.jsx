@@ -41,7 +41,9 @@ const safeFileName = (name, fallback = 'BareenaPDFs') => {
 };
 
 const drawRotationHandle = (ctx, left, top) => {
-  const radius = 17;
+  // Keep the visual affordance large enough to find on a phone. Its hit area
+  // is intentionally larger again (configured on the Fabric control below).
+  const radius = 20;
   ctx.save();
   ctx.translate(left, top);
   ctx.beginPath();
@@ -54,7 +56,7 @@ const drawRotationHandle = (ctx, left, top) => {
   ctx.beginPath();
   ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 2;
-  ctx.arc(-1, 1, 6.5, degToRad(212), degToRad(28));
+  ctx.arc(-1, 1, 7.5, degToRad(212), degToRad(28));
   ctx.stroke();
   ctx.beginPath();
   ctx.fillStyle = '#ffffff';
@@ -84,13 +86,13 @@ const PageCanvas = ({
         cornerColor: '#ffffff',
         cornerStrokeColor: '#00c3ff',
         borderColor: '#00c3ff',
-        cornerSize: 12,
+        cornerSize: 16,
         padding: 0,
         borderDashArray: [4, 4],
         lockUniScaling: true,
         centeredRotation: true,
         centeredScaling: false,
-        touchCornerSize: 44,
+        touchCornerSize: 56,
       });
       fabric.Object.prototype._bareenaPDFsConfigured = true;
     }
@@ -103,8 +105,8 @@ const PageCanvas = ({
       rotationControl.offsetY = -34;
       rotationControl.cursorStyle = 'grab';
       rotationControl.render = drawRotationHandle;
-      rotationControl.sizeX = 36;
-      rotationControl.sizeY = 36;
+      rotationControl.sizeX = 44;
+      rotationControl.sizeY = 44;
     };
 
     if (fabric.Object.prototype.controls?.mtr) configureRotationControl(fabric.Object.prototype);
@@ -131,13 +133,9 @@ const PageCanvas = ({
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
     initCanvas.perPixelTargetFind = false;
-    // Use Fabric's native touch pipeline for object selection, dragging,
-    // resize handles, rotation, and crop editing. Fabric 5 already performs
-    // touch-aware control hit testing and transform handling.
-    //
-    // Keep the canvas touch action in browser-scroll mode so blank-page swipes
-    // can still scroll the workspace. Fabric handles the actual object
-    // transform once a touch lands on an editable object/control.
+    // Blank-page swipes remain scrollable. An editable-object touch is claimed
+    // synchronously by the one mobile gesture engine below, before Fabric or
+    // the browser can start a competing gesture.
     const setCanvasTouchMode = () => {
       initCanvas.upperCanvasEl.style.touchAction = 'manipulation';
       initCanvas.lowerCanvasEl.style.touchAction = 'manipulation';
@@ -150,7 +148,6 @@ const PageCanvas = ({
     // we take ownership of object gestures so one touch cannot race between
     // Fabric, the browser, and our editor.
     const mobileTouch = {
-      timer: null,
       mode: null, // 'drag' | 'scale' | 'rotate'
       target: null,
       startX: 0,
@@ -169,10 +166,6 @@ const PageCanvas = ({
       handle: null,
     };
 
-    const clearMobileTouch = () => {
-      if (mobileTouch.timer) window.clearTimeout(mobileTouch.timer);
-      mobileTouch.timer = null;
-    };
 
     const touchToCanvasPoint = (touch) => {
       const rect = initCanvas.upperCanvasEl.getBoundingClientRect();
@@ -201,10 +194,13 @@ const PageCanvas = ({
       const handleNames = ['tl', 'mt', 'tr', 'mr', 'br', 'mb', 'bl', 'ml', 'mtr'];
 
       for (const name of handleNames) {
+        if (name === 'mtr' && target.lockRotation) continue;
         const point = controls[name];
         if (!point) continue;
         const screen = canvasPointToScreen(point);
-        const tolerance = name === 'mtr' ? 96 : 48;
+        // These are CSS-pixel hit targets, rather than canvas units. They
+        // remain finger-sized even when the A4 page is CSS-scaled on a phone.
+        const tolerance = name === 'mtr' ? 72 : 38;
         if (Math.hypot(touch.clientX - screen.x, touch.clientY - screen.y) <= tolerance) {
           return name;
         }
@@ -213,7 +209,7 @@ const PageCanvas = ({
       // Fallback for Fabric builds where oCoords.mtr is not populated.
       const center = target.getCenterPoint();
       const topMid = controls.mt;
-      if (topMid) {
+      if (topMid && !target.lockRotation) {
         const topMidScreen = canvasPointToScreen(topMid);
         const centerScreen = canvasPointToScreen(center);
         const dx = topMidScreen.x - centerScreen.x;
@@ -223,7 +219,7 @@ const PageCanvas = ({
           x: topMidScreen.x + (dx / len) * 34,
           y: topMidScreen.y + (dy / len) * 34,
         };
-        if (Math.hypot(touch.clientX - rotationScreen.x, touch.clientY - rotationScreen.y) <= 96) {
+        if (Math.hypot(touch.clientX - rotationScreen.x, touch.clientY - rotationScreen.y) <= 72) {
           return 'mtr';
         }
       }
@@ -289,7 +285,10 @@ const PageCanvas = ({
         : null;
 
       // Any actual object interaction belongs exclusively to our mobile engine.
+      // Capture plus both propagation stops ensures Fabric's native touch
+      // pipeline never starts a second transform for the same finger.
       e.stopImmediatePropagation();
+      e.stopPropagation();
 
       const startPoint = touchToCanvasPoint(touch);
       mobileTouch.target = target;
@@ -344,23 +343,6 @@ const PageCanvas = ({
       const touch = e.touches[0];
       const target = mobileTouch.target;
       const point = touchToCanvasPoint(touch);
-
-      if (mobileTouch.mode === 'pending') {
-        const travel = Math.hypot(
-          touch.clientX - mobileTouch.startX,
-          touch.clientY - mobileTouch.startY
-        );
-        if (travel > 8) {
-          clearMobileTouch();
-          mobileTouch.target = null;
-          mobileTouch.mode = null;
-          initCanvas.selection = true;
-          // We intentionally do not preventDefault here: this becomes normal
-          // browser scrolling.
-          return;
-        }
-        return;
-      }
 
       if (mobileTouch.mode === 'drag') {
         e.preventDefault();
@@ -454,14 +436,7 @@ const PageCanvas = ({
     const finishMobileTouch = (e) => {
       if (!mobileTouch.target) return;
 
-      if (mobileTouch.mode === 'pending') {
-        clearMobileTouch();
-        const target = mobileTouch.target;
-        if (target.selectable !== false) {
-          initCanvas.setActiveObject(target);
-          onSetActive(initCanvas, target, page.id);
-        }
-      } else if (mobileTouch.mode === 'drag' || mobileTouch.mode === 'scale' || mobileTouch.mode === 'rotate') {
+      if (mobileTouch.mode === 'drag' || mobileTouch.mode === 'scale' || mobileTouch.mode === 'rotate') {
         e.preventDefault();
         const target = mobileTouch.target;
         if (target.cropEditor) {
@@ -482,7 +457,6 @@ const PageCanvas = ({
       mobileTouch.center = null;
       mobileTouch.startPoint = null;
       mobileTouch.moved = false;
-      clearMobileTouch();
       initCanvas.selection = true;
       initCanvas.renderAll();
     };
@@ -654,23 +628,8 @@ const PageCanvas = ({
           addHGuide(initCanvas.height / 2);
         }
 
-        // Snap object center to page corners too, but only when close enough.
-        const corners = [
-          [0, 0],
-          [initCanvas.width, 0],
-          [0, initCanvas.height],
-          [initCanvas.width, initCanvas.height],
-        ];
-        for (const [cx, cy] of corners) {
-          const dist = Math.hypot(center.x - cx, center.y - cy);
-          if (dist <= threshold * 1.7) {
-            dx = cx - center.x;
-            dy = cy - center.y;
-            addVGuide(cx);
-            addHGuide(cy);
-            break;
-          }
-        }
+        // A corner is reached by the same independent X/Y edge snaps above;
+        // no special, larger corner capture zone is needed or allowed.
       }
 
       if (dx || dy) obj.left += dx, obj.top += dy;
@@ -815,7 +774,6 @@ const PageCanvas = ({
 
     setCanvas(initCanvas);
     return () => {
-      clearMobileTouch();
       initCanvas.upperCanvasEl?.removeEventListener('touchstart', onMobileTouchStart, true);
       initCanvas.upperCanvasEl?.removeEventListener('touchmove', onMobileTouchMove, true);
       initCanvas.upperCanvasEl?.removeEventListener('touchend', finishMobileTouch, true);
@@ -1027,6 +985,12 @@ export default function App() {
     setMobileToolsOpen(false);
   }, [viewingMode]);
 
+  // Viewing is scoped to a Customisable editing session. Switching tools (or
+  // returning to the chooser) must never leave the next session read-only.
+  useEffect(() => {
+    if (appMode !== 'customisable' && viewingMode) setViewingMode(false);
+  }, [appMode, viewingMode]);
+
   const goToModes = () => {
     Object.values(canvasRefs.current).forEach((cvs) => {
       if (cvs) { cvs.discardActiveObject(); cvs.renderAll(); }
@@ -1210,6 +1174,7 @@ export default function App() {
 
   // --- IMPORTING ---
   const handleCustomImport = async (e) => {
+    if (viewingMode) return;
     const files = Array.from(e.target.files);
     e.target.value = '';
     if (!files.length) return;
@@ -1397,6 +1362,7 @@ export default function App() {
 
   // --- DRAG & DROP LOGIC ---
   const handleSortPages = () => {
+    if (viewingMode) return;
     if (dragItem.current !== null && dragOverItem.current !== null && dragItem.current !== dragOverItem.current) {
       const _pages = [...pages];
       const draggedItem = _pages.splice(dragItem.current, 1)[0];
@@ -1419,9 +1385,12 @@ export default function App() {
   };
 
   // --- CUSTOMISABLE LOGIC ---
-  const addBlankPage = () => setPages((prev) => [...prev, { id: Date.now(), initialImage: null, orientation: 'portrait' }]);
+  const addBlankPage = () => {
+    if (!viewingMode) setPages((prev) => [...prev, { id: Date.now(), initialImage: null, orientation: 'portrait' }]);
+  };
 
   const toggleOrientation = (id) => {
+    if (viewingMode) return;
     setPages((prev) => prev.map((page) => (
       page.id === id
         ? { ...page, orientation: page.orientation === 'landscape' ? 'portrait' : 'landscape' }
@@ -1430,6 +1399,7 @@ export default function App() {
   };
 
   const deletePage = (id) => {
+    if (viewingMode) return;
     if (pages.length === 1) return alert('You must have at least one page.');
     if (activeCanvasId === id) {
       setActiveCanvas(null);
@@ -1441,6 +1411,7 @@ export default function App() {
   };
 
   const movePageUp = (id) => {
+    if (viewingMode) return;
     const idx = pages.findIndex((p) => p.id === id);
     if (idx > 0) {
       const newPages = [...pages];
@@ -1450,6 +1421,7 @@ export default function App() {
   };
 
   const movePageDown = (id) => {
+    if (viewingMode) return;
     const idx = pages.findIndex((p) => p.id === id);
     if (idx < pages.length - 1) {
       const newPages = [...pages];
