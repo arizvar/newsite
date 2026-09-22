@@ -155,6 +155,7 @@ const PageCanvas = ({
       target: null,
       startX: 0,
       startY: 0,
+      startPoint: null,
       lastX: 0,
       lastY: 0,
       moved: false,
@@ -192,42 +193,39 @@ const PageCanvas = ({
     const getTouchHandle = (target, touch) => {
       if (!target || !target.hasControls || target.lockMovementX) return null;
 
-      const p = touchToCanvasPoint(touch);
       target.setCoords();
 
-      const corners = {
-        tl: target.oCoords?.tl,
-        mt: target.oCoords?.mt,
-        tr: target.oCoords?.tr,
-        mr: target.oCoords?.mr,
-        br: target.oCoords?.br,
-        mb: target.oCoords?.mb,
-        bl: target.oCoords?.bl,
-        ml: target.oCoords?.ml,
-      };
+      // Fabric's actual control coordinates are already transformed for rotation,
+      // scaling, flip and viewport. Use those instead of estimating the handle.
+      const controls = target.oCoords || {};
+      const handleNames = ['tl', 'mt', 'tr', 'mr', 'br', 'mb', 'bl', 'ml', 'mtr'];
 
-      for (const [name, corner] of Object.entries(corners)) {
-        if (!corner) continue;
-        const s = canvasPointToScreen(corner);
-        if (Math.hypot(touch.clientX - s.x, touch.clientY - s.y) <= 48) return name;
+      for (const name of handleNames) {
+        const point = controls[name];
+        if (!point) continue;
+        const screen = canvasPointToScreen(point);
+        const tolerance = name === 'mtr' ? 58 : 48;
+        if (Math.hypot(touch.clientX - screen.x, touch.clientY - screen.y) <= tolerance) {
+          return name;
+        }
       }
 
-      // Rotation handle: Fabric draws it above the transformed top-center.
+      // Fallback for Fabric builds where oCoords.mtr is not populated.
       const center = target.getCenterPoint();
-      const topMid = {
-        x: (corners.tl.x + corners.tr.x) / 2,
-        y: (corners.tl.y + corners.tr.y) / 2,
-      };
-      const topMidScreen = canvasPointToScreen(topMid);
-      const dx = topMidScreen.x - canvasPointToScreen(center).x;
-      const dy = topMidScreen.y - canvasPointToScreen(center).y;
-      const len = Math.hypot(dx, dy) || 1;
-      const rotationScreen = {
-        x: topMidScreen.x + (dx / len) * 42,
-        y: topMidScreen.y + (dy / len) * 42,
-      };
-      if (Math.hypot(touch.clientX - rotationScreen.x, touch.clientY - rotationScreen.y) <= 48) {
-        return 'mtr';
+      const topMid = controls.mt;
+      if (topMid) {
+        const topMidScreen = canvasPointToScreen(topMid);
+        const centerScreen = canvasPointToScreen(center);
+        const dx = topMidScreen.x - centerScreen.x;
+        const dy = topMidScreen.y - centerScreen.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const rotationScreen = {
+          x: topMidScreen.x + (dx / len) * 30,
+          y: topMidScreen.y + (dy / len) * 30,
+        };
+        if (Math.hypot(touch.clientX - rotationScreen.x, touch.clientY - rotationScreen.y) <= 58) {
+          return 'mtr';
+        }
       }
 
       return null;
@@ -297,6 +295,7 @@ const PageCanvas = ({
       mobileTouch.target = target;
       mobileTouch.startX = mobileTouch.lastX = touch.clientX;
       mobileTouch.startY = mobileTouch.lastY = touch.clientY;
+      mobileTouch.startPoint = startPoint;
       mobileTouch.moved = false;
       mobileTouch.handle = handle;
 
@@ -373,7 +372,14 @@ const PageCanvas = ({
         if (!target.lockMovementX) target.left += dx * (initCanvas.width / Math.max(1, initCanvas.upperCanvasEl.getBoundingClientRect().width));
         if (!target.lockMovementY) target.top += dy * (initCanvas.height / Math.max(1, initCanvas.upperCanvasEl.getBoundingClientRect().height));
         target.setCoords();
-        if (target.cropEditor) target.fire('moving', { target });
+        if (target.cropEditor) {
+          target.fire('moving', { target });
+        } else {
+          // Free movement, with soft snapping only. Boundary locking is separate
+          // and remains optional.
+          clearGuides();
+          constrainToPage(target);
+        }
         initCanvas.renderAll();
         return;
       }
@@ -423,12 +429,23 @@ const PageCanvas = ({
       if (mobileTouch.mode === 'rotate') {
         e.preventDefault();
         const center = mobileTouch.center;
-        const angle = Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI;
-        const start = Math.atan2(
-          touchToCanvasPoint({ clientX: mobileTouch.startX, clientY: mobileTouch.startY }).y - center.y,
-          touchToCanvasPoint({ clientX: mobileTouch.startX, clientY: mobileTouch.startY }).x - center.x
-        ) * 180 / Math.PI;
-        target.angle = mobileTouch.startAngle + (angle - start);
+        const startPoint = mobileTouch.startPoint;
+        const currentAngle = Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI;
+        const startAngle = Math.atan2(startPoint.y - center.y, startPoint.x - center.x) * 180 / Math.PI;
+
+        let nextAngle = mobileTouch.startAngle + (currentAngle - startAngle);
+
+        if (initCanvas.angleSnapEnabled) {
+          const step = initCanvas.angleSnapStep || 15;
+          const normalized = ((nextAngle % 360) + 360) % 360;
+          const snapped = Math.round(normalized / step) * step;
+          const delta = Math.abs(normalized - snapped);
+          if (Math.min(delta, 360 - delta) <= 4) {
+            nextAngle = snapped === 360 ? 0 : snapped;
+          }
+        }
+
+        target.angle = nextAngle;
         target.setCoords();
         initCanvas.renderAll();
       }
@@ -463,6 +480,7 @@ const PageCanvas = ({
       mobileTouch.mode = null;
       mobileTouch.handle = null;
       mobileTouch.center = null;
+      mobileTouch.startPoint = null;
       mobileTouch.moved = false;
       clearMobileTouch();
       initCanvas.selection = true;
