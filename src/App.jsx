@@ -2445,9 +2445,9 @@ export default function App() {
                     <button onClick={() => setViewingMode(false)} className="py-2.5 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[10px] font-semibold">
                       <EyeOff size={15} className="mx-auto mb-0.5" />Edit
                     </button>
-                    <button onClick={() => setViewingMode(true)} className="py-2.5 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[10px] font-semibold">
+                    <div className="py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-semibold text-center">
                       <Eye size={15} className="mx-auto mb-0.5" />Viewing
-                    </button>
+                    </div>
                     <button onClick={exportCustomPDF} disabled={!!cropSessionRef.current} className="py-2.5 rounded-xl bg-white text-black text-[10px] font-semibold disabled:opacity-30">
                       <Download size={15} className="mx-auto mb-0.5" />Export
                     </button>
@@ -2470,7 +2470,7 @@ export default function App() {
                       <Download size={15} className="mx-auto mb-0.5" />Export
                     </button>
                   </div>
-                )}                </div>
+                )}
               </>
             )}
           </div>
