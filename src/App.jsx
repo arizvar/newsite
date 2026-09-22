@@ -69,7 +69,7 @@ const drawRotationHandle = (ctx, left, top) => {
 const PageCanvas = ({
   page, pageIndex, totalPages,
   onSetActive, activeCanvasId,
-  moveUp, moveDown, deletePage, registerCanvas,
+  moveUp, moveDown, deletePage, toggleOrientation, registerCanvas,
   onDragStart, onDragEnter, onDragEnd
 }) => {
   const canvasRef = useRef(null);
@@ -109,9 +109,12 @@ const PageCanvas = ({
 
     if (fabric.Object.prototype.controls?.mtr) configureRotationControl(fabric.Object.prototype);
 
+    const pageWidth = page.orientation === 'landscape' ? 848 : 600;
+    const pageHeight = page.orientation === 'landscape' ? 600 : 848;
+
     const initCanvas = new fabric.Canvas(canvasRef.current, {
-      width: 600,
-      height: 848,
+      width: pageWidth,
+      height: pageHeight,
       backgroundColor: '#ffffff',
       preserveObjectStacking: true,
       selection: true,
@@ -507,10 +510,10 @@ const PageCanvas = ({
     if (page.initialImage) {
       fabric.Image.fromURL(page.initialImage, (img) => {
         if (!canvasRef.current || !img) return;
-        const scale = Math.min(450 / img.width, 450 / img.height);
+        const scale = Math.min((pageWidth - 60) / img.width, (pageHeight - 60) / img.height);
         img.set({
-          left: 300,
-          top: 424,
+          left: pageWidth / 2,
+          top: pageHeight / 2,
           originX: 'center',
           originY: 'center',
           scaleX: scale,
@@ -533,18 +536,19 @@ const PageCanvas = ({
       initCanvas.upperCanvasEl?.removeEventListener('touchcancel', onTouchEnd, true);
       initCanvas.dispose();
     };
-  }, [page.id, page.initialImage]);
+  }, [page.id, page.initialImage, page.orientation]);
 
   useEffect(() => {
     const updatePageScale = () => {
+      const pageWidth = page.orientation === 'landscape' ? 848 : 600;
       const availableWidth = Math.max(240, Math.min(540, window.innerWidth - 48));
-      setPageScale(availableWidth / 600);
+      setPageScale(availableWidth / pageWidth);
     };
     updatePageScale();
     window.addEventListener('resize', updatePageScale);
     window.visualViewport?.addEventListener('resize', updatePageScale);
     return () => { window.removeEventListener('resize', updatePageScale); window.visualViewport?.removeEventListener('resize', updatePageScale); };
-  }, []);
+  }, [page.orientation]);
 
   const handleLocalLayerAdd = async (e) => {
     const file = e.target.files[0];
@@ -555,8 +559,8 @@ const PageCanvas = ({
     fabric.Image.fromURL(dataUrl, (img) => {
       const scale = Math.min(300 / img.width, 300 / img.height);
       img.set({
-        left: 300,
-        top: 424,
+        left: canvas.width / 2,
+        top: canvas.height / 2,
         originX: 'center',
         originY: 'center',
         scaleX: scale,
@@ -618,6 +622,13 @@ const PageCanvas = ({
           <span className="font-bold text-sm tracking-widest uppercase">Page {pageIndex + 1}</span>
         </div>
         <div className="flex gap-2 items-center" onMouseEnter={() => setIsDraggable(false)}>
+          <button
+            onClick={() => toggleOrientation(page.id)}
+            className="flex items-center gap-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-semibold px-2.5 py-1.5 rounded transition-colors border border-neutral-800"
+            title={page.orientation === 'landscape' ? 'Switch to portrait' : 'Switch to landscape'}
+          >
+            <Ratio size={14} /> {page.orientation === 'landscape' ? 'Portrait' : 'Landscape'}
+          </button>
           <label className="flex items-center gap-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 text-xs font-semibold px-3 py-1.5 rounded cursor-pointer transition-colors mr-3 border border-blue-500/20">
             <Plus size={14} /> Add Layer
             <input type="file" accept="image/*" className="hidden" onChange={handleLocalLayerAdd} />
@@ -627,7 +638,13 @@ const PageCanvas = ({
           <button onClick={() => deletePage(page.id)} className="p-1.5 hover:bg-red-500/20 text-red-500 rounded ml-2"><Trash2 size={16} /></button>
         </div>
       </div>
-      <div className="shadow-2xl transition-all ring-1 ring-neutral-800" style={{ width: 600 * pageScale }}>
+      <div
+        className="shadow-2xl transition-all ring-1 ring-neutral-800"
+        style={{
+          width: (page.orientation === 'landscape' ? 848 : 600) * pageScale,
+          height: (page.orientation === 'landscape' ? 600 : 848) * pageScale,
+        }}
+      >
         <canvas ref={canvasRef} className="select-none" style={{ display: 'block' }} />
       </div>
     </div>
@@ -640,7 +657,7 @@ const PageCanvas = ({
 export default function App() {
   const [appMode, setAppMode] = useState(null);
 
-  const [pages, setPages] = useState([{ id: Date.now(), initialImage: null }]);
+  const [pages, setPages] = useState([{ id: Date.now(), initialImage: null, orientation: 'portrait' }]);
   const canvasRefs = useRef({});
   const [activeCanvas, setActiveCanvas] = useState(null);
   const [activeCanvasId, setActiveCanvasId] = useState(null);
@@ -851,7 +868,7 @@ export default function App() {
 
     const newPages = await Promise.all(files.map(async (file, i) => {
       const dataUrl = await readFileAsDataURL(file);
-      return { id: `${Date.now()}_${i}_${Math.random().toString(36).slice(2, 8)}`, initialImage: dataUrl };
+      return { id: `${Date.now()}_${i}_${Math.random().toString(36).slice(2, 8)}`, initialImage: dataUrl, orientation: 'portrait' };
     }));
 
     setPages((prev) => {
@@ -1054,7 +1071,15 @@ export default function App() {
   };
 
   // --- CUSTOMISABLE LOGIC ---
-  const addBlankPage = () => setPages((prev) => [...prev, { id: Date.now(), initialImage: null }]);
+  const addBlankPage = () => setPages((prev) => [...prev, { id: Date.now(), initialImage: null, orientation: 'portrait' }]);
+
+  const toggleOrientation = (id) => {
+    setPages((prev) => prev.map((page) => (
+      page.id === id
+        ? { ...page, orientation: page.orientation === 'landscape' ? 'portrait' : 'landscape' }
+        : page
+    )));
+  };
 
   const deletePage = (id) => {
     if (pages.length === 1) return alert('You must have at least one page.');
@@ -1524,13 +1549,24 @@ export default function App() {
   // --- EXPORTERS ---
   const exportCustomPDF = () => {
     if (cropSessionRef.current) return alert('Apply or cancel the crop before exporting.');
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [600, 848] });
+    const firstIsLandscape = pages[0]?.orientation === 'landscape';
+    const firstFormat = firstIsLandscape ? [848, 600] : [600, 848];
+    const firstOrientation = firstIsLandscape ? 'landscape' : 'portrait';
+    const pdf = new jsPDF({ orientation: firstOrientation, unit: 'px', format: firstFormat });
     pages.forEach((page, index) => {
       const cvs = canvasRefs.current[page.id];
       if (cvs) {
-        if (index > 0) pdf.addPage();
+        const isLandscape = page.orientation === 'landscape';
+        const format = isLandscape ? [848, 600] : [600, 848];
+        const orientation = isLandscape ? 'landscape' : 'portrait';
+        if (index === 0) {
+          // Recreate the document with the first page's actual orientation.
+          // jsPDF's page size must match the canvas being exported.
+        } else {
+          pdf.addPage(format, orientation);
+        }
         const dataUrl = cvs.toDataURL({ format: 'jpeg', multiplier: 3, quality: 1 });
-        pdf.addImage(dataUrl, 'JPEG', 0, 0, 600, 848);
+        pdf.addImage(dataUrl, 'JPEG', 0, 0, format[0], format[1]);
       }
     });
     pdf.save(`${safeFileName(fileName)}.pdf`);
@@ -1779,6 +1815,7 @@ export default function App() {
                 moveUp={movePageUp}
                 moveDown={movePageDown}
                 deletePage={deletePage}
+                toggleOrientation={toggleOrientation}
                 registerCanvas={registerCanvas}
                 onDragStart={() => dragItem.current = index}
                 onDragEnter={() => dragOverItem.current = index}
