@@ -7,8 +7,7 @@ import {
   Image as ImageIcon, Download, Trash2, Layers, MoveUp, MoveDown,
   Lock, Unlock, FlipHorizontal, FlipVertical, Undo, Redo, Plus,
   LayoutTemplate, Maximize, GripHorizontal, FileText, Loader2,
-  Crop, Copy, RotateCcw, AlignCenterHorizontal, AlignCenterVertical,
-  Maximize2, Minimize2, Magnet, Move, Check, X, Ratio, Crosshair,
+  Crop, Copy, RotateCcw, Maximize2, Minimize2, Check, X, Ratio, Crosshair,
   FilePlus2, Menu, Settings, Eye, EyeOff
 } from 'lucide-react';
 
@@ -41,7 +40,9 @@ const safeFileName = (name, fallback = 'BareenaPDFs') => {
 };
 
 const drawRotationHandle = (ctx, left, top) => {
-  const radius = 17;
+  // Keep the visual affordance large enough to find on a phone. Its hit area
+  // is intentionally larger again (configured on the Fabric control below).
+  const radius = 20;
   ctx.save();
   ctx.translate(left, top);
   ctx.beginPath();
@@ -54,7 +55,7 @@ const drawRotationHandle = (ctx, left, top) => {
   ctx.beginPath();
   ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 2;
-  ctx.arc(-1, 1, 6.5, degToRad(212), degToRad(28));
+  ctx.arc(-1, 1, 7.5, degToRad(212), degToRad(28));
   ctx.stroke();
   ctx.beginPath();
   ctx.fillStyle = '#ffffff';
@@ -84,13 +85,13 @@ const PageCanvas = ({
         cornerColor: '#ffffff',
         cornerStrokeColor: '#00c3ff',
         borderColor: '#00c3ff',
-        cornerSize: 12,
+        cornerSize: 16,
         padding: 0,
         borderDashArray: [4, 4],
         lockUniScaling: true,
         centeredRotation: true,
         centeredScaling: false,
-        touchCornerSize: 44,
+        touchCornerSize: 56,
       });
       fabric.Object.prototype._bareenaPDFsConfigured = true;
     }
@@ -103,8 +104,8 @@ const PageCanvas = ({
       rotationControl.offsetY = -34;
       rotationControl.cursorStyle = 'grab';
       rotationControl.render = drawRotationHandle;
-      rotationControl.sizeX = 36;
-      rotationControl.sizeY = 36;
+      rotationControl.sizeX = 44;
+      rotationControl.sizeY = 44;
     };
 
     if (fabric.Object.prototype.controls?.mtr) configureRotationControl(fabric.Object.prototype);
@@ -127,17 +128,16 @@ const PageCanvas = ({
     initCanvas.boundaryLock = false;
     initCanvas.angleSnapEnabled = true;
     initCanvas.angleSnapStep = 15;
-    initCanvas.snapThreshold = 7;
+    // Keep the capture range deliberately tight: guides should assist an
+    // alignment, not make horizontal or vertical movement feel magnetic.
+    initCanvas.snapThreshold = 4;
+    initCanvas.isViewingMode = false;
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
     initCanvas.perPixelTargetFind = false;
-    // Use Fabric's native touch pipeline for object selection, dragging,
-    // resize handles, rotation, and crop editing. Fabric 5 already performs
-    // touch-aware control hit testing and transform handling.
-    //
-    // Keep the canvas touch action in browser-scroll mode so blank-page swipes
-    // can still scroll the workspace. Fabric handles the actual object
-    // transform once a touch lands on an editable object/control.
+    // Blank-page swipes remain scrollable. An editable-object touch is claimed
+    // synchronously by the one mobile gesture engine below, before Fabric or
+    // the browser can start a competing gesture.
     const setCanvasTouchMode = () => {
       initCanvas.upperCanvasEl.style.touchAction = 'manipulation';
       initCanvas.lowerCanvasEl.style.touchAction = 'manipulation';
@@ -150,7 +150,6 @@ const PageCanvas = ({
     // we take ownership of object gestures so one touch cannot race between
     // Fabric, the browser, and our editor.
     const mobileTouch = {
-      timer: null,
       mode: null, // 'drag' | 'scale' | 'rotate'
       target: null,
       startX: 0,
@@ -169,10 +168,6 @@ const PageCanvas = ({
       handle: null,
     };
 
-    const clearMobileTouch = () => {
-      if (mobileTouch.timer) window.clearTimeout(mobileTouch.timer);
-      mobileTouch.timer = null;
-    };
 
     const touchToCanvasPoint = (touch) => {
       const rect = initCanvas.upperCanvasEl.getBoundingClientRect();
@@ -201,10 +196,13 @@ const PageCanvas = ({
       const handleNames = ['tl', 'mt', 'tr', 'mr', 'br', 'mb', 'bl', 'ml', 'mtr'];
 
       for (const name of handleNames) {
+        if (name === 'mtr' && target.lockRotation) continue;
         const point = controls[name];
         if (!point) continue;
         const screen = canvasPointToScreen(point);
-        const tolerance = name === 'mtr' ? 96 : 48;
+        // These are CSS-pixel hit targets, rather than canvas units. They
+        // remain finger-sized even when the A4 page is CSS-scaled on a phone.
+        const tolerance = name === 'mtr' ? 72 : 38;
         if (Math.hypot(touch.clientX - screen.x, touch.clientY - screen.y) <= tolerance) {
           return name;
         }
@@ -213,7 +211,7 @@ const PageCanvas = ({
       // Fallback for Fabric builds where oCoords.mtr is not populated.
       const center = target.getCenterPoint();
       const topMid = controls.mt;
-      if (topMid) {
+      if (topMid && !target.lockRotation) {
         const topMidScreen = canvasPointToScreen(topMid);
         const centerScreen = canvasPointToScreen(center);
         const dx = topMidScreen.x - centerScreen.x;
@@ -223,7 +221,7 @@ const PageCanvas = ({
           x: topMidScreen.x + (dx / len) * 34,
           y: topMidScreen.y + (dy / len) * 34,
         };
-        if (Math.hypot(touch.clientX - rotationScreen.x, touch.clientY - rotationScreen.y) <= 96) {
+        if (Math.hypot(touch.clientX - rotationScreen.x, touch.clientY - rotationScreen.y) <= 72) {
           return 'mtr';
         }
       }
@@ -289,7 +287,10 @@ const PageCanvas = ({
         : null;
 
       // Any actual object interaction belongs exclusively to our mobile engine.
+      // Capture plus both propagation stops ensures Fabric's native touch
+      // pipeline never starts a second transform for the same finger.
       e.stopImmediatePropagation();
+      e.stopPropagation();
 
       const startPoint = touchToCanvasPoint(touch);
       mobileTouch.target = target;
@@ -344,23 +345,6 @@ const PageCanvas = ({
       const touch = e.touches[0];
       const target = mobileTouch.target;
       const point = touchToCanvasPoint(touch);
-
-      if (mobileTouch.mode === 'pending') {
-        const travel = Math.hypot(
-          touch.clientX - mobileTouch.startX,
-          touch.clientY - mobileTouch.startY
-        );
-        if (travel > 8) {
-          clearMobileTouch();
-          mobileTouch.target = null;
-          mobileTouch.mode = null;
-          initCanvas.selection = true;
-          // We intentionally do not preventDefault here: this becomes normal
-          // browser scrolling.
-          return;
-        }
-        return;
-      }
 
       if (mobileTouch.mode === 'drag') {
         e.preventDefault();
@@ -454,14 +438,7 @@ const PageCanvas = ({
     const finishMobileTouch = (e) => {
       if (!mobileTouch.target) return;
 
-      if (mobileTouch.mode === 'pending') {
-        clearMobileTouch();
-        const target = mobileTouch.target;
-        if (target.selectable !== false) {
-          initCanvas.setActiveObject(target);
-          onSetActive(initCanvas, target, page.id);
-        }
-      } else if (mobileTouch.mode === 'drag' || mobileTouch.mode === 'scale' || mobileTouch.mode === 'rotate') {
+      if (mobileTouch.mode === 'drag' || mobileTouch.mode === 'scale' || mobileTouch.mode === 'rotate') {
         e.preventDefault();
         const target = mobileTouch.target;
         if (target.cropEditor) {
@@ -482,7 +459,6 @@ const PageCanvas = ({
       mobileTouch.center = null;
       mobileTouch.startPoint = null;
       mobileTouch.moved = false;
-      clearMobileTouch();
       initCanvas.selection = true;
       initCanvas.renderAll();
     };
@@ -600,6 +576,11 @@ const PageCanvas = ({
       if (!obj || obj.isGuide || obj.cropEditor) return;
 
       const rect = obj.getBoundingRect();
+      // Fabric bounding rects expose left/top/width/height, not right/bottom.
+      // Derive both trailing edges once so right and bottom snapping remain
+      // exactly as reliable as left and top snapping.
+      const right = rect.left + rect.width;
+      const bottom = rect.top + rect.height;
       let dx = 0;
       let dy = 0;
       const threshold = initCanvas.snapThreshold;
@@ -609,11 +590,11 @@ const PageCanvas = ({
       if (initCanvas.boundaryLock) {
         if (rect.width <= initCanvas.width) {
           if (rect.left < 0) dx = -rect.left;
-          else if (rect.right > initCanvas.width) dx = initCanvas.width - rect.right;
+          else if (right > initCanvas.width) dx = initCanvas.width - right;
         }
         if (rect.height <= initCanvas.height) {
           if (rect.top < 0) dy = -rect.top;
-          else if (rect.bottom > initCanvas.height) dy = initCanvas.height - rect.bottom;
+          else if (bottom > initCanvas.height) dy = initCanvas.height - bottom;
         }
       }
 
@@ -623,9 +604,9 @@ const PageCanvas = ({
         // crosses the page edge.
         const edgeDistances = [
           { axis: 'x', distance: Math.abs(rect.left), delta: -rect.left, guide: 0, addGuide: () => addVGuide(0) },
-          { axis: 'x', distance: Math.abs(initCanvas.width - rect.right), delta: initCanvas.width - rect.right, guide: initCanvas.width, addGuide: () => addVGuide(initCanvas.width) },
+          { axis: 'x', distance: Math.abs(initCanvas.width - right), delta: initCanvas.width - right, guide: initCanvas.width, addGuide: () => addVGuide(initCanvas.width) },
           { axis: 'y', distance: Math.abs(rect.top), delta: -rect.top, guide: 0, addGuide: () => addHGuide(0) },
-          { axis: 'y', distance: Math.abs(initCanvas.height - rect.bottom), delta: initCanvas.height - rect.bottom, guide: initCanvas.height, addGuide: () => addHGuide(initCanvas.height) },
+          { axis: 'y', distance: Math.abs(initCanvas.height - bottom), delta: initCanvas.height - bottom, guide: initCanvas.height, addGuide: () => addHGuide(initCanvas.height) },
         ];
 
         const xEdge = edgeDistances
@@ -654,23 +635,8 @@ const PageCanvas = ({
           addHGuide(initCanvas.height / 2);
         }
 
-        // Snap object center to page corners too, but only when close enough.
-        const corners = [
-          [0, 0],
-          [initCanvas.width, 0],
-          [0, initCanvas.height],
-          [initCanvas.width, initCanvas.height],
-        ];
-        for (const [cx, cy] of corners) {
-          const dist = Math.hypot(center.x - cx, center.y - cy);
-          if (dist <= threshold * 1.7) {
-            dx = cx - center.x;
-            dy = cy - center.y;
-            addVGuide(cx);
-            addHGuide(cy);
-            break;
-          }
-        }
+        // A corner is reached by the same independent X/Y edge snaps above;
+        // no special, larger corner capture zone is needed or allowed.
       }
 
       if (dx || dy) obj.left += dx, obj.top += dy;
@@ -806,6 +772,8 @@ const PageCanvas = ({
           scaleY: scale,
           lockUniScaling: true,
           centeredScaling: false,
+          selectable: !initCanvas.isViewingMode,
+          evented: !initCanvas.isViewingMode,
         });
         initCanvas.add(img);
         initCanvas.renderAll();
@@ -815,7 +783,6 @@ const PageCanvas = ({
 
     setCanvas(initCanvas);
     return () => {
-      clearMobileTouch();
       initCanvas.upperCanvasEl?.removeEventListener('touchstart', onMobileTouchStart, true);
       initCanvas.upperCanvasEl?.removeEventListener('touchmove', onMobileTouchMove, true);
       initCanvas.upperCanvasEl?.removeEventListener('touchend', finishMobileTouch, true);
@@ -827,6 +794,7 @@ const PageCanvas = ({
   useEffect(() => {
     if (!canvas) return;
 
+    canvas.isViewingMode = !!viewingMode;
     canvas.skipTargetFind = !!viewingMode;
     canvas.selection = !viewingMode;
     canvas.getObjects().forEach((obj) => {
@@ -858,7 +826,7 @@ const PageCanvas = ({
   const handleLocalLayerAdd = async (e) => {
     const file = e.target.files[0];
     e.target.value = '';
-    if (!file || !canvas) return;
+    if (!file || !canvas || canvas.isViewingMode) return;
 
     const dataUrl = await readFileAsDataURL(file);
     fabric.Image.fromURL(dataUrl, (img) => {
@@ -872,9 +840,11 @@ const PageCanvas = ({
         scaleY: scale,
         lockUniScaling: true,
         centeredScaling: false,
+        selectable: !canvas.isViewingMode,
+        evented: !canvas.isViewingMode,
       });
       canvas.add(img);
-      canvas.setActiveObject(img);
+      if (!canvas.isViewingMode) canvas.setActiveObject(img);
       canvas.renderAll();
     });
   };
@@ -936,7 +906,7 @@ const PageCanvas = ({
       className={`flex flex-col items-center mb-12 transition-all ${isActivePage ? 'scale-[1.02]' : 'scale-100 opacity-90 hover:opacity-100'}`}
     >
       <div
-        className="page-toolbar w-full max-w-[600px] flex justify-between items-center mb-3 px-1 sm:px-2 text-neutral-400 cursor-grab active:cursor-grabbing"
+        className="page-toolbar w-full max-w-[600px] flex flex-wrap justify-between items-center gap-2 mb-3 px-1 sm:px-2 text-neutral-400 cursor-grab active:cursor-grabbing"
         onMouseEnter={() => setIsDraggable(true)}
         onMouseLeave={() => setIsDraggable(false)}
       >
@@ -944,7 +914,7 @@ const PageCanvas = ({
           <GripHorizontal size={18} />
           <span className="font-bold text-sm tracking-widest uppercase">Page {pageIndex + 1}</span>
         </div>
-        <div className="flex gap-2 items-center" onMouseEnter={() => setIsDraggable(false)}>
+        <div className="flex flex-wrap justify-end gap-2 items-center" onMouseEnter={() => setIsDraggable(false)}>
           <button
             onClick={() => toggleOrientation(page.id)} disabled={viewingMode}
             className="flex items-center gap-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 text-xs font-semibold px-2.5 py-1.5 rounded transition-colors border border-neutral-800"
@@ -1006,6 +976,21 @@ export default function App() {
 
   useEffect(() => {
     if (!viewingMode) return;
+
+    // Viewing Mode can be entered while crop mode is open. Tear down the
+    // temporary crop editor first so a hidden crop rectangle cannot remain
+    // interactive or leave its source image disabled when editing resumes.
+    const crop = cropSessionRef.current;
+    if (crop) {
+      crop.image.clipPath = crop.originalClipPath;
+      crop.image.selectable = true;
+      crop.image.evented = true;
+      crop.canvas.remove(crop.cropRect);
+      crop.canvas._isCropping = false;
+      cropSessionRef.current = null;
+      setCropSession(null);
+    }
+
     Object.values(canvasRefs.current).forEach((cvs) => {
       if (cvs) {
         cvs.discardActiveObject();
@@ -1026,6 +1011,12 @@ export default function App() {
     cropSessionRef.current = null;
     setMobileToolsOpen(false);
   }, [viewingMode]);
+
+  // Viewing is scoped to a Customisable editing session. Switching tools (or
+  // returning to the chooser) must never leave the next session read-only.
+  useEffect(() => {
+    if (appMode !== 'customisable' && viewingMode) setViewingMode(false);
+  }, [appMode, viewingMode]);
 
   const goToModes = () => {
     Object.values(canvasRefs.current).forEach((cvs) => {
@@ -1210,6 +1201,7 @@ export default function App() {
 
   // --- IMPORTING ---
   const handleCustomImport = async (e) => {
+    if (viewingMode) return;
     const files = Array.from(e.target.files);
     e.target.value = '';
     if (!files.length) return;
@@ -1397,6 +1389,7 @@ export default function App() {
 
   // --- DRAG & DROP LOGIC ---
   const handleSortPages = () => {
+    if (viewingMode) return;
     if (dragItem.current !== null && dragOverItem.current !== null && dragItem.current !== dragOverItem.current) {
       const _pages = [...pages];
       const draggedItem = _pages.splice(dragItem.current, 1)[0];
@@ -1419,9 +1412,12 @@ export default function App() {
   };
 
   // --- CUSTOMISABLE LOGIC ---
-  const addBlankPage = () => setPages((prev) => [...prev, { id: Date.now(), initialImage: null, orientation: 'portrait' }]);
+  const addBlankPage = () => {
+    if (!viewingMode) setPages((prev) => [...prev, { id: Date.now(), initialImage: null, orientation: 'portrait' }]);
+  };
 
   const toggleOrientation = (id) => {
+    if (viewingMode) return;
     setPages((prev) => prev.map((page) => (
       page.id === id
         ? { ...page, orientation: page.orientation === 'landscape' ? 'portrait' : 'landscape' }
@@ -1430,6 +1426,7 @@ export default function App() {
   };
 
   const deletePage = (id) => {
+    if (viewingMode) return;
     if (pages.length === 1) return alert('You must have at least one page.');
     if (activeCanvasId === id) {
       setActiveCanvas(null);
@@ -1441,6 +1438,7 @@ export default function App() {
   };
 
   const movePageUp = (id) => {
+    if (viewingMode) return;
     const idx = pages.findIndex((p) => p.id === id);
     if (idx > 0) {
       const newPages = [...pages];
@@ -1450,6 +1448,7 @@ export default function App() {
   };
 
   const movePageDown = (id) => {
+    if (viewingMode) return;
     const idx = pages.findIndex((p) => p.id === id);
     if (idx < pages.length - 1) {
       const newPages = [...pages];
@@ -1543,7 +1542,7 @@ export default function App() {
   };
 
   const toggleCanvasSetting = (setting) => {
-    if (!activeCanvas) return;
+    if (!activeCanvas || viewingMode) return;
     activeCanvas[setting] = !activeCanvas[setting];
     setHistoryTrigger((prev) => prev + 1);
     activeCanvas.renderAll();
@@ -1552,16 +1551,18 @@ export default function App() {
   const alignActive = (mode) => {
     if (!activeObject || !activeCanvas || activeObject.lockMovementX || cropSessionRef.current) return;
     const rect = activeObject.getBoundingRect();
+    const right = rect.left + rect.width;
+    const bottom = rect.top + rect.height;
     const center = activeObject.getCenterPoint();
     let dx = 0;
     let dy = 0;
 
     if (mode === 'left') dx = -rect.left;
     if (mode === 'centerH') dx = activeCanvas.width / 2 - center.x;
-    if (mode === 'right') dx = activeCanvas.width - rect.right;
+    if (mode === 'right') dx = activeCanvas.width - right;
     if (mode === 'top') dy = -rect.top;
     if (mode === 'centerV') dy = activeCanvas.height / 2 - center.y;
-    if (mode === 'bottom') dy = activeCanvas.height - rect.bottom;
+    if (mode === 'bottom') dy = activeCanvas.height - bottom;
 
     activeObject.left += dx;
     activeObject.top += dy;
@@ -1735,7 +1736,7 @@ export default function App() {
   };
 
   const startCrop = () => {
-    if (!activeObject || !activeCanvas || activeObject.type !== 'image' || activeObject.lockMovementX) return;
+    if (viewingMode || !activeObject || !activeCanvas || activeObject.type !== 'image' || activeObject.lockMovementX) return;
     if (cropSessionRef.current) return;
     if (activeObject.clipPath) {
       alert('This image already has a crop. Apply the current crop before cropping it again.');
@@ -1880,7 +1881,6 @@ export default function App() {
     const imageW = Math.abs(session.image.getScaledWidth());
     const imageH = Math.abs(session.image.getScaledHeight());
     const currentW = session.cropRect.getScaledWidth();
-    const currentH = session.cropRect.getScaledHeight();
 
     let targetW = currentW;
     let targetH = targetW / numericRatio;
@@ -2523,6 +2523,14 @@ export default function App() {
               </div>
             ) : activeObject ? (
               <div className="p-4 space-y-4">
+                <div>
+                  <div className="text-[10px] font-bold text-neutral-500 tracking-wider mb-2">LAYER</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button onClick={() => updateActive({ flipX: !activeObject.flipX })} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5"><FlipHorizontal size={14} /> Flip H</button>
+                    <button onClick={() => updateActive({ flipY: !activeObject.flipY })} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5"><FlipVertical size={14} /> Flip V</button>
+                    <button onClick={deleteSelected} disabled={activeObject.lockMovementX} className="bg-red-500/10 border border-red-500/20 text-red-400 py-2.5 rounded-xl text-xs disabled:opacity-30 flex items-center justify-center gap-1.5"><Trash2 size={14} /> Delete</button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => rotateActive(-90)} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5"><RotateCcw size={14} /> Rotate Left</button>
                   <button onClick={() => rotateActive(90)} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5"><RotateCcw size={14} className="scale-x-[-1]" /> Rotate Right</button>
@@ -2558,6 +2566,14 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-2">
                     <label className="bg-neutral-900 border border-neutral-800 rounded-xl p-2.5"><span className="text-[10px] text-neutral-500 block mb-1">X</span><input type="number" value={Math.round(activeObject.left || 0)} onChange={(e) => handlePropertyChange('left', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label>
                     <label className="bg-neutral-900 border border-neutral-800 rounded-xl p-2.5"><span className="text-[10px] text-neutral-500 block mb-1">Y</span><input type="number" value={Math.round(activeObject.top || 0)} onChange={(e) => handlePropertyChange('top', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-neutral-500 tracking-wider mb-2">CANVAS</div>
+                  <div className="space-y-2">
+                    <label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3"><span className="text-xs">Smart snapping</span><input type="checkbox" checked={!!activeCanvas?.snapEnabled} onChange={() => toggleCanvasSetting('snapEnabled')} className="accent-blue-500" /></label>
+                    <label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3"><span className="text-xs">Keep inside page</span><input type="checkbox" checked={!!activeCanvas?.boundaryLock} onChange={() => toggleCanvasSetting('boundaryLock')} className="accent-blue-500" /></label>
+                    <label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3"><span className="text-xs">15° angle snapping</span><input type="checkbox" checked={!!activeCanvas?.angleSnapEnabled} onChange={() => toggleCanvasSetting('angleSnapEnabled')} className="accent-blue-500" /></label>
                   </div>
                 </div>
               </div>
