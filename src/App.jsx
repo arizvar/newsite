@@ -143,9 +143,22 @@ const PageCanvas = ({
 
     const onTouchStart = (e) => {
       if (initCanvas._isCropping || e.touches.length !== 1) return;
+
+      // Touch gestures are handled here so Fabric never creates a marquee-selection box.
+      initCanvas.selection = false;
       const point = getTouchPoint(e);
       const target = initCanvas.findTarget(e);
-      if (!point || !target || target.isGuide || target.cropEditor) return;
+
+      // Do not preventDefault: blank-page swipes must remain native page scrolling.
+      e.stopImmediatePropagation();
+
+      if (!point || !target || target.isGuide || target.cropEditor) {
+        clearTouchHold();
+        touchState.target = null;
+        touchState.dragging = false;
+        setCanvasTouchMode(false);
+        return;
+      }
 
       touchState.target = target;
       touchState.startX = touchState.lastX = point.clientX;
@@ -164,41 +177,43 @@ const PageCanvas = ({
     };
 
     const onTouchMove = (e) => {
-      if (!touchState.target || e.touches.length !== 1) return;
+      if (e.touches.length !== 1) return;
       const point = getTouchPoint(e);
       if (!point) return;
 
-      if (!touchState.dragging) {
-        if (Math.hypot(point.clientX - touchState.startX, point.clientY - touchState.startY) > 8) {
+      if (!touchState.target || !touchState.dragging) {
+        // Before the hold completes, the browser is free to scroll the workspace.
+        if (touchState.target && Math.hypot(point.clientX - touchState.startX, point.clientY - touchState.startY) > 8) {
           clearTouchHold();
           touchState.target = null;
         }
         return;
       }
 
+      e.stopImmediatePropagation();
       e.preventDefault();
+
       const dx = point.clientX - touchState.lastX;
       const dy = point.clientY - touchState.lastY;
       touchState.lastX = point.clientX;
       touchState.lastY = point.clientY;
 
-      if (!touchState.target.lockMovementX) {
-        touchState.target.left += dx / pageScale;
-        touchState.target.top += dy / pageScale;
-        touchState.target.setCoords();
-        initCanvas.constrainActiveObject?.(touchState.target);
-        initCanvas.renderAll();
-      }
+      if (!touchState.target.lockMovementX) touchState.target.left += dx / pageScale;
+      if (!touchState.target.lockMovementY) touchState.target.top += dy / pageScale;
+      touchState.target.setCoords();
+      initCanvas.constrainActiveObject?.(touchState.target);
+      initCanvas.renderAll();
     };
 
-    const onTouchEnd = () => {
+    const onTouchEnd = (e) => {
+      e.stopImmediatePropagation();
       clearTouchHold();
       if (touchState.dragging && touchState.target) {
         initCanvas.fire('object:modified', { target: touchState.target });
       }
       touchState.target = null;
       touchState.dragging = false;
-      setCanvasTouchMode(!!initCanvas.getActiveObject());
+      setCanvasTouchMode(false);
       initCanvas.renderAll();
     };
 
@@ -206,6 +221,10 @@ const PageCanvas = ({
     initCanvas.upperCanvasEl.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
     initCanvas.upperCanvasEl.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
     initCanvas.upperCanvasEl.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: true });
+    initCanvas.upperCanvasEl.addEventListener('mousedown', () => {
+      initCanvas.selection = true;
+      setCanvasTouchMode(!!initCanvas.getActiveObject());
+    }, { capture: true });
 
     registerCanvas(page.id, initCanvas);
 
@@ -1482,7 +1501,7 @@ export default function App() {
         <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
           <div className="text-center mb-8 sm:mb-10">
             <div className="mx-auto mb-3 h-14 w-14 rounded-2xl bg-neutral-950 border border-neutral-700 p-2 shadow-xl"><img src="/favicon.svg" alt="BareenaPDFs" className="h-full w-full object-contain" /></div>
-            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">BareenaPDFs</h1>
+            <img src="/bareenapdfs-wordmark.svg" alt="BareenaPDFs" className="mx-auto h-auto w-[min(78vw,360px)] sm:w-[360px]" />
             <div className="mt-2 text-[10px] sm:text-xs font-semibold text-neutral-500 uppercase tracking-[0.22em]">made by ariz</div>
           </div>
 
@@ -1557,7 +1576,7 @@ export default function App() {
         <div className="px-3 py-2.5 flex items-center gap-2">
           <button onClick={goToModes} className="p-2 -ml-1 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Back to modes"><LayoutTemplate size={16} /></button>
           <div className="h-9 w-9 shrink-0 rounded-xl bg-neutral-950 border border-neutral-700 p-1 shadow-lg"><img src="/favicon.svg" alt="" className="h-full w-full object-contain" /></div>
-          <div className="min-w-0 flex-1"><div className="text-base font-black text-white leading-none">BareenaPDFs</div><div className="text-[9px] font-semibold text-neutral-500 uppercase tracking-widest mt-1">made by ariz</div></div>
+          <div className="min-w-0 flex-1"><img src="/bareenapdfs-wordmark.svg" alt="BareenaPDFs" className="h-auto w-[132px] max-w-full" /><div className="text-[9px] font-semibold text-neutral-500 uppercase tracking-widest mt-1">made by ariz</div></div>
           <button onClick={() => setMobileToolsOpen((open) => !open)} className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Open tools"><Menu size={17} /></button>
         </div>
       </div>
@@ -1567,7 +1586,7 @@ export default function App() {
         <div>
           <div className="p-6">
             <div className="mb-6">
-              <button onClick={goToModes} className="text-left text-2xl font-black text-white tracking-tight leading-none hover:text-blue-300 transition-colors">BareenaPDFs</button>
+              <button onClick={goToModes} className="block text-left hover:opacity-80 transition-opacity"><img src="/bareenapdfs-wordmark.svg" alt="BareenaPDFs" className="h-auto w-[190px] max-w-full" /></button>
               <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-widest mt-1 block">made by ariz</span>
             </div>
 
