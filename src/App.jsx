@@ -197,9 +197,13 @@ const PageCanvas = ({
 
       const corners = {
         tl: target.oCoords?.tl,
+        mt: target.oCoords?.mt,
         tr: target.oCoords?.tr,
+        mr: target.oCoords?.mr,
         br: target.oCoords?.br,
+        mb: target.oCoords?.mb,
         bl: target.oCoords?.bl,
+        ml: target.oCoords?.ml,
       };
 
       for (const [name, corner] of Object.entries(corners)) {
@@ -244,7 +248,8 @@ const PageCanvas = ({
         target.setCoords();
       }
 
-      initCanvas.constrainActiveObject?.(target);
+      // Resize must not trigger positional snapping. Moving uses snapping;
+      // scaling keeps the object's center under the user's gesture.
     };
 
     const onMobileTouchStart = (e) => {
@@ -389,13 +394,27 @@ const PageCanvas = ({
         );
 
         if (target.lockUniScaling !== false) {
-          const distance = Math.max(1, Math.hypot(local.x, local.y));
-          const ratio = distance / mobileTouch.startDistance;
+          let ratio;
+          if (mobileTouch.handle === 'mt' || mobileTouch.handle === 'mb') {
+            ratio = Math.max(0.02, Math.abs(local.y) / mobileTouch.startLocalY);
+          } else if (mobileTouch.handle === 'ml' || mobileTouch.handle === 'mr') {
+            ratio = Math.max(0.02, Math.abs(local.x) / mobileTouch.startLocalX);
+          } else {
+            const distance = Math.max(1, Math.hypot(local.x, local.y));
+            ratio = distance / mobileTouch.startDistance;
+          }
           target.scaleX = mobileTouch.startScaleX * ratio;
           target.scaleY = mobileTouch.startScaleY * ratio;
         } else {
-          target.scaleX = mobileTouch.startScaleX * (Math.max(1, Math.abs(local.x)) / mobileTouch.startLocalX);
-          target.scaleY = mobileTouch.startScaleY * (Math.max(1, Math.abs(local.y)) / mobileTouch.startLocalY);
+          const widthRatio = Math.max(0.02, Math.abs(local.x) / mobileTouch.startLocalX);
+          const heightRatio = Math.max(0.02, Math.abs(local.y) / mobileTouch.startLocalY);
+
+          target.scaleX = mobileTouch.startScaleX * (
+            mobileTouch.handle === 'mt' || mobileTouch.handle === 'mb' ? 1 : widthRatio
+          );
+          target.scaleY = mobileTouch.startScaleY * (
+            mobileTouch.handle === 'ml' || mobileTouch.handle === 'mr' ? 1 : heightRatio
+          );
         }
 
         target.setCoords();
@@ -433,6 +452,7 @@ const PageCanvas = ({
           onSetActive(initCanvas, target, page.id);
         }
       } else if (mobileTouch.mode === 'drag' || mobileTouch.mode === 'scale' || mobileTouch.mode === 'rotate') {
+        e.preventDefault();
         const target = mobileTouch.target;
         if (target.cropEditor) {
           if (mobileTouch.mode === 'drag') target.fire('moving', { target });
