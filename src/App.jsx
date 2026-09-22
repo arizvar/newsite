@@ -130,7 +130,7 @@ const PageCanvas = ({
     initCanvas.angleSnapStep = 15;
     // Keep the capture range deliberately tight: guides should assist an
     // alignment, not make horizontal or vertical movement feel magnetic.
-    initCanvas.snapThreshold = 7;
+    initCanvas.snapThreshold = 4;
     initCanvas.isViewingMode = false;
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
