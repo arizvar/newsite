@@ -41,7 +41,7 @@ const safeFileName = (name, fallback = 'BareenaPDFs') => {
 };
 
 const drawRotationHandle = (ctx, left, top) => {
-  const radius = 14;
+  const radius = 17;
   ctx.save();
   ctx.translate(left, top);
   ctx.beginPath();
@@ -220,8 +220,8 @@ const PageCanvas = ({
         const dy = topMidScreen.y - centerScreen.y;
         const len = Math.hypot(dx, dy) || 1;
         const rotationScreen = {
-          x: topMidScreen.x + (dx / len) * 30,
-          y: topMidScreen.y + (dy / len) * 30,
+          x: topMidScreen.x + (dx / len) * 34,
+          y: topMidScreen.y + (dy / len) * 34,
         };
         if (Math.hypot(touch.clientX - rotationScreen.x, touch.clientY - rotationScreen.y) <= 96) {
           return 'mtr';
@@ -618,31 +618,30 @@ const PageCanvas = ({
       }
 
       if (initCanvas.snapEnabled) {
-        // Four page edges are treated identically. A nearby left/right edge
-        // snaps the corresponding object edge; top/bottom do the same.
-        const leftGap = Math.abs(rect.left);
-        const rightGap = Math.abs(initCanvas.width - rect.right);
-        const topGap = Math.abs(rect.top);
-        const bottomGap = Math.abs(initCanvas.height - rect.bottom);
+        // All four page edges use exactly the same snap distance.
+        // This works whether the object approaches from inside or slightly
+        // crosses the page edge.
+        const edgeDistances = [
+          { axis: 'x', distance: Math.abs(rect.left), delta: -rect.left, guide: 0, addGuide: () => addVGuide(0) },
+          { axis: 'x', distance: Math.abs(initCanvas.width - rect.right), delta: initCanvas.width - rect.right, guide: initCanvas.width, addGuide: () => addVGuide(initCanvas.width) },
+          { axis: 'y', distance: Math.abs(rect.top), delta: -rect.top, guide: 0, addGuide: () => addHGuide(0) },
+          { axis: 'y', distance: Math.abs(initCanvas.height - rect.bottom), delta: initCanvas.height - rect.bottom, guide: initCanvas.height, addGuide: () => addHGuide(initCanvas.height) },
+        ];
 
-        if (leftGap <= threshold || rightGap <= threshold) {
-          if (leftGap <= rightGap) {
-            dx = -rect.left;
-            addVGuide(0);
-          } else {
-            dx = initCanvas.width - rect.right;
-            addVGuide(initCanvas.width);
-          }
+        const xEdge = edgeDistances
+          .filter((edge) => edge.axis === 'x' && edge.distance <= threshold)
+          .sort((a, b) => a.distance - b.distance)[0];
+        const yEdge = edgeDistances
+          .filter((edge) => edge.axis === 'y' && edge.distance <= threshold)
+          .sort((a, b) => a.distance - b.distance)[0];
+
+        if (xEdge) {
+          dx = xEdge.delta;
+          xEdge.addGuide();
         }
-
-        if (topGap <= threshold || bottomGap <= threshold) {
-          if (topGap <= bottomGap) {
-            dy = -rect.top;
-            addHGuide(0);
-          } else {
-            dy = initCanvas.height - rect.bottom;
-            addHGuide(initCanvas.height);
-          }
+        if (yEdge) {
+          dy = yEdge.delta;
+          yEdge.addGuide();
         }
 
         const center = getObjectCenter(obj);
