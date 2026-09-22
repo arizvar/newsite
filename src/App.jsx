@@ -100,11 +100,11 @@ const PageCanvas = ({
       if (!rotationControl) return;
       rotationControl.x = 0;
       rotationControl.y = -0.5;
-      rotationControl.offsetY = -30;
+      rotationControl.offsetY = -34;
       rotationControl.cursorStyle = 'grab';
       rotationControl.render = drawRotationHandle;
-      rotationControl.sizeX = 28;
-      rotationControl.sizeY = 28;
+      rotationControl.sizeX = 36;
+      rotationControl.sizeY = 36;
     };
 
     if (fabric.Object.prototype.controls?.mtr) configureRotationControl(fabric.Object.prototype);
@@ -127,7 +127,7 @@ const PageCanvas = ({
     initCanvas.boundaryLock = false;
     initCanvas.angleSnapEnabled = true;
     initCanvas.angleSnapStep = 15;
-    initCanvas.snapThreshold = 4;
+    initCanvas.snapThreshold = 8;
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
     initCanvas.perPixelTargetFind = false;
@@ -204,7 +204,7 @@ const PageCanvas = ({
         const point = controls[name];
         if (!point) continue;
         const screen = canvasPointToScreen(point);
-        const tolerance = name === 'mtr' ? 58 : 48;
+        const tolerance = name === 'mtr' ? 96 : 48;
         if (Math.hypot(touch.clientX - screen.x, touch.clientY - screen.y) <= tolerance) {
           return name;
         }
@@ -223,7 +223,7 @@ const PageCanvas = ({
           x: topMidScreen.x + (dx / len) * 30,
           y: topMidScreen.y + (dy / len) * 30,
         };
-        if (Math.hypot(touch.clientX - rotationScreen.x, touch.clientY - rotationScreen.y) <= 58) {
+        if (Math.hypot(touch.clientX - rotationScreen.x, touch.clientY - rotationScreen.y) <= 96) {
           return 'mtr';
         }
       }
@@ -618,21 +618,31 @@ const PageCanvas = ({
       }
 
       if (initCanvas.snapEnabled) {
-        // Canvas edges — these naturally include corner snapping when both axes match.
-        if (Math.abs(rect.left) <= threshold) {
-          dx = -rect.left;
-          addVGuide(0);
-        } else if (Math.abs(rect.right - initCanvas.width) <= threshold) {
-          dx = initCanvas.width - rect.right;
-          addVGuide(initCanvas.width);
+        // Four page edges are treated identically. A nearby left/right edge
+        // snaps the corresponding object edge; top/bottom do the same.
+        const leftGap = Math.abs(rect.left);
+        const rightGap = Math.abs(initCanvas.width - rect.right);
+        const topGap = Math.abs(rect.top);
+        const bottomGap = Math.abs(initCanvas.height - rect.bottom);
+
+        if (leftGap <= threshold || rightGap <= threshold) {
+          if (leftGap <= rightGap) {
+            dx = -rect.left;
+            addVGuide(0);
+          } else {
+            dx = initCanvas.width - rect.right;
+            addVGuide(initCanvas.width);
+          }
         }
 
-        if (Math.abs(rect.top) <= threshold) {
-          dy = -rect.top;
-          addHGuide(0);
-        } else if (Math.abs(rect.bottom - initCanvas.height) <= threshold) {
-          dy = initCanvas.height - rect.bottom;
-          addHGuide(initCanvas.height);
+        if (topGap <= threshold || bottomGap <= threshold) {
+          if (topGap <= bottomGap) {
+            dy = -rect.top;
+            addHGuide(0);
+          } else {
+            dy = initCanvas.height - rect.bottom;
+            addHGuide(initCanvas.height);
+          }
         }
 
         const center = getObjectCenter(obj);
