@@ -52,7 +52,9 @@ const safeFileName = (name, fallback = 'BareenaPDFs') => {
               const iconClasses = { blue: 'bg-blue-500/10 text-blue-400 border-blue-500/15', emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/15', purple: 'bg-purple-500/10 text-purple-400 border-purple-500/15', orange: 'bg-orange-500/10 text-orange-400 border-orange-500/15' };
               return (
                 <button key={id} onClick={() => setAppMode(id)} className={"group text-left rounded-2xl border border-neutral-800 bg-[#121212] p-5 sm:p-6 transition-all active:scale-[0.985] " + accentClasses[accent]}>
-                  <div className={"w-11 h-11 rounded-xl border flex items-center justify-center mb-5 " + iconClasses[accent]}><Icon size={21} /></div>
+                  <div className="h-28 sm:h-36 rounded-xl border border-neutral-800 bg-[#0c0c0c] mb-5 p-4 flex items-center justify-center overflow-hidden">
+                    <div className={"w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border flex items-center justify-center " + iconClasses[accent]}><Icon size={28} /></div>
+                  </div>
                   <div className="flex items-center justify-between gap-3"><h2 className="text-base sm:text-lg font-bold text-white">{label}</h2><span className="text-neutral-600 group-hover:text-neutral-400 transition-colors">→</span></div>
                   <p className="mt-2 text-xs sm:text-sm leading-relaxed text-neutral-500">{description}</p>
                 </button>
@@ -109,12 +111,12 @@ const PageCanvas = ({
       cornerColor: '#ffffff',
       cornerStrokeColor: '#00c3ff',
       borderColor: '#00c3ff',
-      cornerSize: 10,
+      cornerSize: 12,
       padding: 0,
       borderDashArray: [4, 4],
       lockUniScaling: true,
       centeredRotation: true,
-      touchCornerSize: 36,
+      touchCornerSize: 44,
     });
 
     const configureRotationControl = (obj) => {
@@ -147,6 +149,11 @@ const PageCanvas = ({
     initCanvas.angleSnapStep = 15;
     initCanvas.snapThreshold = 7;
     initCanvas._isCropping = false;
+    initCanvas.targetFindTolerance = 10;
+    initCanvas.perPixelTargetFind = false;
+    initCanvas.upperCanvasEl.style.touchAction = 'none';
+    initCanvas.lowerCanvasEl.style.touchAction = 'none';
+    initCanvas.wrapperEl.style.touchAction = 'none';
 
     registerCanvas(page.id, initCanvas);
 
@@ -432,7 +439,8 @@ const PageCanvas = ({
     };
     updatePageScale();
     window.addEventListener('resize', updatePageScale);
-    return () => window.removeEventListener('resize', updatePageScale);
+    window.visualViewport?.addEventListener('resize', updatePageScale);
+    return () => { window.removeEventListener('resize', updatePageScale); window.visualViewport?.removeEventListener('resize', updatePageScale); };
   }, []);
 
   const handleLocalLayerAdd = async (e) => {
@@ -457,6 +465,15 @@ const PageCanvas = ({
       canvas.renderAll();
     });
   };
+
+  useEffect(() => {
+    if (!canvas) return;
+    const cssWidth = 600 * pageScale;
+    const cssHeight = 848 * pageScale;
+    canvas.setDimensions({ width: cssWidth, height: cssHeight }, { cssOnly: true });
+    canvas.calcOffset();
+    canvas.renderAll();
+  }, [canvas, pageScale]);
 
   const isActivePage = activeCanvasId === page.id;
 
@@ -489,7 +506,7 @@ const PageCanvas = ({
         </div>
       </div>
       <div className={`shadow-2xl transition-all ${isActivePage ? 'ring-4 ring-blue-500 shadow-blue-500/20' : 'ring-1 ring-neutral-800'}`} style={{ width: 600 * pageScale }}>
-        <canvas ref={canvasRef} className="touch-none select-none" style={{ width: `${600 * pageScale}px`, height: `${848 * pageScale}px`, display: 'block' }} />
+        <canvas ref={canvasRef} className="touch-none select-none" style={{ display: 'block' }} />
       </div>
     </div>
   );
@@ -1181,7 +1198,7 @@ export default function App() {
       transparentCorners: false,
       cornerColor: '#ffffff',
       cornerStrokeColor: '#00c3ff',
-      cornerSize: 11,
+      cornerSize: 14,
       lockRotation: true,
       hasRotatingPoint: false,
       excludeFromExport: true,
@@ -1192,6 +1209,7 @@ export default function App() {
     cropSessionRef.current = session;
     setCropSession(session);
     setCropRatio('free');
+    setMobileToolsOpen(false);
 
     image.selectable = false;
     image.evented = false;
@@ -1515,7 +1533,7 @@ export default function App() {
                     onDragEnter={() => dragOverItem.current = idx}
                     onDragEnd={handleSortAutoFit}
                     onDragOver={(e) => e.preventDefault()}
-                    className="mb-12 flex flex-col items-center transition-all hover:scale-[1.01]"
+                    className="mb-8 sm:mb-12 flex flex-col items-center transition-all hover:scale-[1.01] w-full"
                   >
                     <div className="flex justify-between items-center mb-3 text-neutral-400 cursor-grab active:cursor-grabbing w-full" style={{ width: `${w}px` }} onMouseEnter={() => setIsDragg(true)} onMouseLeave={() => setIsDragg(false)}>
                       <div className="flex items-center gap-2 hover:text-white transition-colors"><GripHorizontal size={18} /><span className="font-bold text-sm tracking-widest uppercase">Blueprint {idx + 1}</span></div>
@@ -1528,7 +1546,7 @@ export default function App() {
                         <button onClick={() => deleteAutoFitPage(imgData.id)} className="p-1.5 hover:bg-red-500/20 text-red-500 rounded transition-colors ml-2"><Trash2 size={16} /></button>
                       </div>
                     </div>
-                    <div className="bg-[#0c1a2e] border border-blue-500/30 flex items-center justify-center relative shadow-2xl ring-1 ring-blue-500/20 transition-all" style={{ width: `${w}px`, height: `${h}px`, backgroundImage: 'linear-gradient(rgba(0, 195, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 195, 255, 0.1) 1px, transparent 1px)', backgroundSize: '20px 20px', padding: imgData.hasMargin ? '14px' : '0px' }}>
+                    <div className="bg-[#0c1a2e] border border-blue-500/30 flex items-center justify-center relative shadow-2xl ring-1 ring-blue-500/20 transition-all" style={{ width: `min(${w}px, calc(100vw - 24px))`, height: `min(${h}px, calc((100vw - 24px) * ${h / w}))`, backgroundImage: 'linear-gradient(rgba(0, 195, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 195, 255, 0.1) 1px, transparent 1px)', backgroundSize: '20px 20px', padding: imgData.hasMargin ? '14px' : '0px' }}>
                       <img src={imgData.src} className="max-w-full max-h-full object-contain drop-shadow-2xl z-10" alt={`AutoFit Blueprint ${idx + 1}`} />
                     </div>
                   </div>
@@ -1734,19 +1752,33 @@ export default function App() {
       {appMode === 'customisable' && (
         <div className="xl:hidden fixed inset-x-0 bottom-0 z-50 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pointer-events-none">
           <div className="mx-auto max-w-xl rounded-2xl border border-neutral-800 bg-[#121212]/97 backdrop-blur-xl shadow-2xl p-2 pointer-events-auto">
-            <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-              <label className="min-w-[58px] shrink-0 py-2 rounded-xl bg-blue-600 text-white text-[10px] font-semibold text-center active:scale-95 cursor-pointer"><Plus size={15} className="mx-auto mb-1" />Add<input type="file" multiple accept="image/*" className="hidden" onChange={handleCustomImport} /></label>
-              <button onClick={() => activeCanvas?.undo()} disabled={!canUndo} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Undo size={15} className="mx-auto mb-1" />Undo</button>
-              <button onClick={() => activeCanvas?.redo()} disabled={!canRedo} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Redo size={15} className="mx-auto mb-1" />Redo</button>
-              {activeObject && <>
-                <button onClick={() => { activeCanvas?.discardActiveObject(); activeCanvas?.renderAll(); setActiveObject(null); }} className="min-w-[70px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold active:scale-95"><X size={15} className="mx-auto mb-1" />Deselect</button>
-                <button onClick={startCrop} disabled={activeObject.type !== 'image' || activeObject.lockMovementX} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Crop size={15} className="mx-auto mb-1" />Crop</button>
-                <button onClick={duplicateSelected} disabled={activeObject.lockMovementX} className="min-w-[70px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Copy size={15} className="mx-auto mb-1" />Duplicate</button>
-                <button onClick={toggleLock} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold active:scale-95"><Lock size={15} className="mx-auto mb-1" />{activeObject.lockMovementX ? 'Unlock' : 'Lock'}</button>
-              </>}
-              <button onClick={() => setMobileToolsOpen(true)} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold active:scale-95"><Settings size={15} className="mx-auto mb-1" />More</button>
-              <button onClick={exportCustomPDF} disabled={!!cropSessionRef.current} className="min-w-[62px] shrink-0 py-2 rounded-xl bg-white text-black text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Download size={15} className="mx-auto mb-1" />Export</button>
-            </div>
+            {cropSession ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  {['free', '1:1', '4:5', '16:9'].map((ratio) => (
+                    <button key={ratio} onClick={() => setCropAspectRatio(ratio)} className={`shrink-0 px-3 py-2 rounded-xl text-[10px] font-bold border ${cropRatio === ratio ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-neutral-900 border-neutral-800 text-neutral-400'}`}>{ratio === 'free' ? 'Free' : ratio}</button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button onClick={cancelCrop} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-xs font-semibold"><X size={15} className="inline mr-1.5" />Cancel</button>
+                  <button onClick={applyCrop} className="py-2.5 rounded-xl bg-blue-600 text-white text-xs font-semibold"><Check size={15} className="inline mr-1.5" />Apply Crop</button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+                <label className="min-w-[58px] shrink-0 py-2 rounded-xl bg-blue-600 text-white text-[10px] font-semibold text-center active:scale-95 cursor-pointer"><Plus size={15} className="mx-auto mb-1" />Add<input type="file" multiple accept="image/*" className="hidden" onChange={handleCustomImport} /></label>
+                <button onClick={() => activeCanvas?.undo()} disabled={!canUndo} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Undo size={15} className="mx-auto mb-1" />Undo</button>
+                <button onClick={() => activeCanvas?.redo()} disabled={!canRedo} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Redo size={15} className="mx-auto mb-1" />Redo</button>
+                {activeObject && <>
+                  <button onClick={() => { activeCanvas?.discardActiveObject(); activeCanvas?.renderAll(); setActiveObject(null); }} className="min-w-[70px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold active:scale-95"><X size={15} className="mx-auto mb-1" />Deselect</button>
+                  <button onClick={startCrop} disabled={activeObject.type !== 'image' || activeObject.lockMovementX} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Crop size={15} className="mx-auto mb-1" />Crop</button>
+                  <button onClick={duplicateSelected} disabled={activeObject.lockMovementX} className="min-w-[70px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Copy size={15} className="mx-auto mb-1" />Duplicate</button>
+                  <button onClick={toggleLock} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold active:scale-95"><Lock size={15} className="mx-auto mb-1" />{activeObject.lockMovementX ? 'Unlock' : 'Lock'}</button>
+                </>}
+                <button onClick={() => setMobileToolsOpen(true)} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold active:scale-95"><Settings size={15} className="mx-auto mb-1" />More</button>
+                <button onClick={exportCustomPDF} disabled={!!cropSessionRef.current} className="min-w-[62px] shrink-0 py-2 rounded-xl bg-white text-black text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Download size={15} className="mx-auto mb-1" />Export</button>
+              </div>
+            )}
           </div>
         </div>
       )}
