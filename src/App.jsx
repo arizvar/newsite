@@ -131,14 +131,6 @@ const PageCanvas = ({
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
     initCanvas.perPixelTargetFind = false;
-    const setCanvasTouchMode = (selected = false) => {
-      const touchAction = selected ? 'none' : 'auto';
-      initCanvas.upperCanvasEl.style.touchAction = touchAction;
-      initCanvas.lowerCanvasEl.style.touchAction = touchAction;
-      initCanvas.wrapperEl.style.touchAction = touchAction;
-    };
-    setCanvasTouchMode(false);
-
     // Use Fabric's native touch pipeline for object selection, dragging,
     // resize handles, rotation, and crop editing. Fabric 5 already performs
     // touch-aware control hit testing and transform handling.
@@ -153,6 +145,300 @@ const PageCanvas = ({
     };
     setCanvasTouchMode();
 
+    // MOBILE GESTURE ENGINE
+    // Fabric's desktop mouse transforms remain enabled, but on touch devices
+    // we take ownership of object gestures so one touch cannot race between
+    // Fabric, the browser, and our editor.
+    const mobileTouch = {
+      timer: null,
+      mode: null, // 'drag' | 'scale' | 'rotate'
+      target: null,
+      startX: 0,
+      startY: 0,
+      lastX: 0,
+      lastY: 0,
+      moved: false,
+      center: null,
+      startScaleX: 1,
+      startScaleY: 1,
+      startDistance: 1,
+      startLocalX: 1,
+      startLocalY: 1,
+      startAngle: 0,
+      handle: null,
+    };
+
+    const clearMobileTouch = () => {
+      if (mobileTouch.timer) window.clearTimeout(mobileTouch.timer);
+      mobileTouch.timer = null;
+    };
+
+    const touchToCanvasPoint = (touch) => {
+      const rect = initCanvas.upperCanvasEl.getBoundingClientRect();
+      return new fabric.Point(
+        (touch.clientX - rect.left) * (initCanvas.width / Math.max(1, rect.width)),
+        (touch.clientY - rect.top) * (initCanvas.height / Math.max(1, rect.height))
+      );
+    };
+
+    const canvasPointToScreen = (point) => {
+      const rect = initCanvas.upperCanvasEl.getBoundingClientRect();
+      return {
+        x: rect.left + point.x * (rect.width / Math.max(1, initCanvas.width)),
+        y: rect.top + point.y * (rect.height / Math.max(1, initCanvas.height)),
+      };
+    };
+
+    const getTouchHandle = (target, touch) => {
+      if (!target || !target.hasControls || target.lockMovementX) return null;
+
+      const p = touchToCanvasPoint(touch);
+      target.setCoords();
+
+      const corners = {
+        tl: target.oCoords?.tl,
+        tr: target.oCoords?.tr,
+        br: target.oCoords?.br,
+        bl: target.oCoords?.bl,
+      };
+
+      for (const [name, corner] of Object.entries(corners)) {
+        if (!corner) continue;
+        const s = canvasPointToScreen(corner);
+        if (Math.hypot(touch.clientX - s.x, touch.clientY - s.y) <= 48) return name;
+      }
+
+      // Rotation handle: Fabric draws it above the transformed top-center.
+      const center = target.getCenterPoint();
+      const topMid = {
+        x: (corners.tl.x + corners.tr.x) / 2,
+        y: (corners.tl.y + corners.tr.y) / 2,
+      };
+      const topMidScreen = canvasPointToScreen(topMid);
+      const dx = topMidScreen.x - canvasPointToScreen(center).x;
+      const dy = topMidScreen.y - canvasPointToScreen(center).y;
+      const len = Math.hypot(dx, dy) || 1;
+      const rotationScreen = {
+        x: topMidScreen.x + (dx / len) * 42,
+        y: topMidScreen.y + (dy / len) * 42,
+      };
+      if (Math.hypot(touch.clientX - rotationScreen.x, touch.clientY - rotationScreen.y) <= 48) {
+        return 'mtr';
+      }
+
+      return null;
+    };
+
+    const applyMobileBoundary = (target) => {
+      if (!target || target.cropEditor || !initCanvas.boundaryLock) return;
+
+      const rect = target.getBoundingRect();
+      const scaleFactor = Math.min(
+        1,
+        rect.width > initCanvas.width ? initCanvas.width / rect.width : 1,
+        rect.height > initCanvas.height ? initCanvas.height / rect.height : 1
+      );
+      if (scaleFactor < 1 && target.type === 'image') {
+        target.scaleX *= scaleFactor;
+        target.scaleY *= scaleFactor;
+        target.setCoords();
+      }
+
+      initCanvas.constrainActiveObject?.(target);
+    };
+
+    const onMobileTouchStart = (e) => {
+      if (e.touches?.length !== 1) return;
+
+      const touch = e.touches[0];
+      const target = initCanvas.findTarget(e);
+
+      // Never let Fabric's own touch transform start. We either handle the
+      // object ourselves or leave the page completely native-scrollable.
+      if (!target || target.isGuide) return;
+
+      if (initCanvas._isCropping && target !== initCanvas.getActiveObject()) return;
+
+      const handle = target === initCanvas.getActiveObject()
+        ? getTouchHandle(target, touch)
+        : null;
+
+      // Any actual object interaction belongs exclusively to our mobile engine.
+      e.stopImmediatePropagation();
+
+      const startPoint = touchToCanvasPoint(touch);
+      mobileTouch.target = target;
+      mobileTouch.startX = mobileTouch.lastX = touch.clientX;
+      mobileTouch.startY = mobileTouch.lastY = touch.clientY;
+      mobileTouch.moved = false;
+      mobileTouch.handle = handle;
+
+      if (handle === 'mtr' && !target.lockRotation) {
+        e.preventDefault();
+        mobileTouch.mode = 'rotate';
+        mobileTouch.center = target.getCenterPoint();
+        mobileTouch.startAngle = target.angle || 0;
+      } else if (handle && !target.lockScalingX && !target.cropEditor) {
+        e.preventDefault();
+        mobileTouch.mode = 'scale';
+        mobileTouch.center = target.getCenterPoint();
+        mobileTouch.startScaleX = target.scaleX || 1;
+        mobileTouch.startScaleY = target.scaleY || 1;
+
+        const local = rotateVector(
+          startPoint.x - mobileTouch.center.x,
+          startPoint.y - mobileTouch.center.y,
+          -(target.angle || 0)
+        );
+        mobileTouch.startLocalX = Math.max(1, Math.abs(local.x));
+        mobileTouch.startLocalY = Math.max(1, Math.abs(local.y));
+        mobileTouch.startDistance = Math.max(1, Math.hypot(local.x, local.y));
+      } else {
+        // Body drag deliberately uses a short hold. A normal swipe over an image
+        // remains a page scroll rather than accidentally moving the image.
+        mobileTouch.mode = 'pending';
+        mobileTouch.timer = window.setTimeout(() => {
+          if (!mobileTouch.target || mobileTouch.mode !== 'pending') return;
+          mobileTouch.mode = 'drag';
+          mobileTouch.moved = false;
+          if (mobileTouch.target.selectable !== false) {
+            initCanvas.setActiveObject(mobileTouch.target);
+            onSetActive(initCanvas, mobileTouch.target, page.id);
+          }
+          initCanvas.renderAll();
+        }, 220);
+      }
+
+      initCanvas.selection = false;
+      if (target.selectable !== false && initCanvas.getActiveObject() !== target && !initCanvas._isCropping) {
+        initCanvas.setActiveObject(target);
+      }
+    };
+
+    const onMobileTouchMove = (e) => {
+      if (e.touches?.length !== 1 || !mobileTouch.target) return;
+
+      const touch = e.touches[0];
+      const target = mobileTouch.target;
+      const point = touchToCanvasPoint(touch);
+
+      if (mobileTouch.mode === 'pending') {
+        const travel = Math.hypot(
+          touch.clientX - mobileTouch.startX,
+          touch.clientY - mobileTouch.startY
+        );
+        if (travel > 8) {
+          clearMobileTouch();
+          mobileTouch.target = null;
+          mobileTouch.mode = null;
+          initCanvas.selection = true;
+          // We intentionally do not preventDefault here: this becomes normal
+          // browser scrolling.
+          return;
+        }
+        return;
+      }
+
+      if (mobileTouch.mode === 'drag') {
+        e.preventDefault();
+        const dx = touch.clientX - mobileTouch.lastX;
+        const dy = touch.clientY - mobileTouch.lastY;
+        mobileTouch.lastX = touch.clientX;
+        mobileTouch.lastY = touch.clientY;
+
+        if (!target.lockMovementX) target.left += dx * (initCanvas.width / Math.max(1, initCanvas.upperCanvasEl.getBoundingClientRect().width));
+        if (!target.lockMovementY) target.top += dy * (initCanvas.height / Math.max(1, initCanvas.upperCanvasEl.getBoundingClientRect().height));
+        target.setCoords();
+        if (target.cropEditor) {
+          target.fire('moving', { target });
+        } else {
+          initCanvas.constrainActiveObject?.(target);
+        }
+        initCanvas.renderAll();
+        return;
+      }
+
+      if (mobileTouch.mode === 'scale') {
+        e.preventDefault();
+        const local = rotateVector(
+          point.x - mobileTouch.center.x,
+          point.y - mobileTouch.center.y,
+          -(target.angle || 0)
+        );
+
+        if (target.lockUniScaling !== false) {
+          const distance = Math.max(1, Math.hypot(local.x, local.y));
+          const ratio = distance / mobileTouch.startDistance;
+          target.scaleX = mobileTouch.startScaleX * ratio;
+          target.scaleY = mobileTouch.startScaleY * ratio;
+        } else {
+          target.scaleX = mobileTouch.startScaleX * (Math.max(1, Math.abs(local.x)) / mobileTouch.startLocalX);
+          target.scaleY = mobileTouch.startScaleY * (Math.max(1, Math.abs(local.y)) / mobileTouch.startLocalY);
+        }
+
+        target.setCoords();
+        if (target.cropEditor) {
+          target.fire('scaling', { target });
+        } else {
+          applyMobileBoundary(target);
+        }
+        initCanvas.renderAll();
+        return;
+      }
+
+      if (mobileTouch.mode === 'rotate') {
+        e.preventDefault();
+        const center = mobileTouch.center;
+        const angle = Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI;
+        const start = Math.atan2(
+          touchToCanvasPoint({ clientX: mobileTouch.startX, clientY: mobileTouch.startY }).y - center.y,
+          touchToCanvasPoint({ clientX: mobileTouch.startX, clientY: mobileTouch.startY }).x - center.x
+        ) * 180 / Math.PI;
+        target.angle = mobileTouch.startAngle + (angle - start);
+        target.setCoords();
+        initCanvas.renderAll();
+      }
+    };
+
+    const finishMobileTouch = (e) => {
+      if (!mobileTouch.target) return;
+
+      if (mobileTouch.mode === 'pending') {
+        clearMobileTouch();
+        const target = mobileTouch.target;
+        if (target.selectable !== false) {
+          initCanvas.setActiveObject(target);
+          onSetActive(initCanvas, target, page.id);
+        }
+      } else if (mobileTouch.mode === 'drag' || mobileTouch.mode === 'scale' || mobileTouch.mode === 'rotate') {
+        const target = mobileTouch.target;
+        if (target.cropEditor) {
+          if (mobileTouch.mode === 'drag') target.fire('moving', { target });
+          if (mobileTouch.mode === 'scale') target.fire('scaling', { target });
+        } else {
+          target.setCoords();
+          if (mobileTouch.mode === 'drag') initCanvas.constrainActiveObject?.(target);
+          initCanvas.fire('object:modified', { target });
+        }
+      }
+
+      mobileTouch.target = null;
+      mobileTouch.mode = null;
+      mobileTouch.handle = null;
+      mobileTouch.center = null;
+      mobileTouch.moved = false;
+      clearMobileTouch();
+      initCanvas.selection = true;
+      initCanvas.renderAll();
+    };
+
+    initCanvas.upperCanvasEl.addEventListener('touchstart', onMobileTouchStart, { capture: true, passive: false });
+    initCanvas.upperCanvasEl.addEventListener('touchmove', onMobileTouchMove, { capture: true, passive: false });
+    initCanvas.upperCanvasEl.addEventListener('touchend', finishMobileTouch, { capture: true, passive: false });
+    initCanvas.upperCanvasEl.addEventListener('touchcancel', finishMobileTouch, { capture: true, passive: false });
+
+    // Only use native touch handling for actual gestures. Blank canvas touches
+    // never stop propagation or preventDefault, so the surrounding page scrolls normally.
     registerCanvas(page.id, initCanvas);
 
     initCanvas.history = [];
