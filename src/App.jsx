@@ -124,7 +124,7 @@ const PageCanvas = ({
 
     // Editor-style behaviour settings. These are mutable from the right sidebar.
     initCanvas.snapEnabled = true;
-    initCanvas.boundaryLock = true;
+    initCanvas.boundaryLock = false;
     initCanvas.angleSnapEnabled = true;
     initCanvas.angleSnapStep = 15;
     initCanvas.snapThreshold = 7;
@@ -321,19 +321,16 @@ const PageCanvas = ({
         mobileTouch.startLocalY = Math.max(1, Math.abs(local.y));
         mobileTouch.startDistance = Math.max(1, Math.hypot(local.x, local.y));
       } else {
-        // Body drag deliberately uses a short hold. A normal swipe over an image
-        // remains a page scroll rather than accidentally moving the image.
-        mobileTouch.mode = 'pending';
-        mobileTouch.timer = window.setTimeout(() => {
-          if (!mobileTouch.target || mobileTouch.mode !== 'pending') return;
-          mobileTouch.mode = 'drag';
-          mobileTouch.moved = false;
-          if (mobileTouch.target.selectable !== false) {
-            initCanvas.setActiveObject(mobileTouch.target);
-            onSetActive(initCanvas, mobileTouch.target, page.id);
-          }
-          initCanvas.renderAll();
-        }, 220);
+        // Body touches become drags immediately. There is intentionally no
+        // long-press or hold delay on mobile.
+        e.preventDefault();
+        mobileTouch.mode = 'drag';
+        mobileTouch.moved = false;
+        if (target.selectable !== false) {
+          initCanvas.setActiveObject(target);
+          onSetActive(initCanvas, target, page.id);
+        }
+        initCanvas.renderAll();
       }
 
       initCanvas.selection = false;
@@ -2021,7 +2018,6 @@ export default function App() {
           <button onClick={goToModes} className="p-2 -ml-1 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Back to modes"><LayoutTemplate size={16} /></button>
           <div className="h-9 w-9 shrink-0 rounded-xl bg-neutral-950 border border-neutral-700 p-1 shadow-lg"><img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="h-full w-full object-contain" /></div>
           <div className="min-w-0 flex-1"><img src={`${import.meta.env.BASE_URL}bareenapdfs-wordmark.svg`} alt="BareenaPDFs" className="h-auto w-[132px] max-w-full" /><div className="text-[9px] font-semibold text-neutral-500 uppercase tracking-widest mt-1">made by ariz</div></div>
-          <button onClick={() => setViewingMode((mode) => !mode)} className={`p-2 rounded-lg border active:scale-95 ${viewingMode ? 'bg-blue-500/15 border-blue-500/30 text-blue-400' : 'bg-neutral-900 border-neutral-800 text-neutral-300'}`} aria-label={viewingMode ? 'Exit viewing mode' : 'Enter viewing mode'}>{viewingMode ? <EyeOff size={17} /> : <Eye size={17} />}</button>
           <button onClick={() => setMobileToolsOpen((open) => !open)} className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Open tools"><Menu size={17} /></button>
         </div>
       </div>
@@ -2404,12 +2400,20 @@ export default function App() {
       )}
       {appMode === 'customisable' && (
         <div className="xl:hidden fixed inset-x-0 bottom-0 z-50 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pointer-events-none">
-          <div className="mx-auto max-w-xl rounded-2xl border border-neutral-800 bg-[#121212]/97 backdrop-blur-xl shadow-2xl p-2 pointer-events-auto">
+          <div className="mx-auto w-full max-w-xl rounded-2xl border border-neutral-800 bg-[#121212]/98 backdrop-blur-xl shadow-2xl p-2 pointer-events-auto">
             {cropSession ? (
               <div className="space-y-2">
-                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-neutral-300">Crop</span>
+                  <button onClick={() => setMobileToolsOpen(false)} className="p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-400">
+                    <X size={14} />
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
                   {['free', '1:1', '4:5', '16:9'].map((ratio) => (
-                    <button key={ratio} onClick={() => setCropAspectRatio(ratio)} className={`shrink-0 px-3 py-2 rounded-xl text-[10px] font-bold border ${cropRatio === ratio ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-neutral-900 border-neutral-800 text-neutral-400'}`}>{ratio === 'free' ? 'Free' : ratio}</button>
+                    <button key={ratio} onClick={() => setCropAspectRatio(ratio)} className={`py-2.5 rounded-xl text-[10px] font-bold border ${cropRatio === ratio ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-neutral-900 border-neutral-800 text-neutral-400'}`}>
+                      {ratio === 'free' ? 'Free' : ratio}
+                    </button>
                   ))}
                 </div>
                 <div className="grid grid-cols-2 gap-1.5">
@@ -2418,28 +2422,144 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-                <label className="min-w-[58px] shrink-0 py-2 rounded-xl bg-blue-600 text-white text-[10px] font-semibold text-center active:scale-95 cursor-pointer"><Plus size={15} className="mx-auto mb-1" />Add<input type="file" multiple accept="image/*" className="hidden" onChange={handleCustomImport} /></label>
-                <button onClick={() => activeCanvas?.undo()} disabled={!canUndo} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Undo size={15} className="mx-auto mb-1" />Undo</button>
-                <button onClick={() => activeCanvas?.redo()} disabled={!canRedo} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Redo size={15} className="mx-auto mb-1" />Redo</button>
-                {activeObject && <>
-                  <button onClick={() => { activeCanvas?.discardActiveObject(); activeCanvas?.renderAll(); setActiveObject(null); }} className="min-w-[70px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold active:scale-95"><X size={15} className="mx-auto mb-1" />Deselect</button>
-                  <button onClick={startCrop} disabled={activeObject.type !== 'image' || activeObject.lockMovementX} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Crop size={15} className="mx-auto mb-1" />Crop</button>
-                  <button onClick={duplicateSelected} disabled={activeObject.lockMovementX} className="min-w-[70px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Copy size={15} className="mx-auto mb-1" />Duplicate</button>
-                  <button onClick={toggleLock} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold active:scale-95"><Lock size={15} className="mx-auto mb-1" />{activeObject.lockMovementX ? 'Unlock' : 'Lock'}</button>
-                </>}
-                <button onClick={() => setMobileToolsOpen(true)} className="min-w-[58px] shrink-0 py-2 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold active:scale-95"><Settings size={15} className="mx-auto mb-1" />More</button>
-                <button onClick={exportCustomPDF} disabled={!!cropSessionRef.current} className="min-w-[62px] shrink-0 py-2 rounded-xl bg-white text-black text-[10px] font-semibold disabled:opacity-30 active:scale-95"><Download size={15} className="mx-auto mb-1" />Export</button>
-              </div>
+              <>
+                {activeObject && !viewingMode && (
+                  <div className="grid grid-cols-4 gap-1.5 mb-2">
+                    <button onClick={startCrop} disabled={activeObject.type !== 'image' || activeObject.lockMovementX} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30">
+                      <Crop size={15} className="mx-auto mb-0.5" />Crop
+                    </button>
+                    <button onClick={duplicateSelected} disabled={activeObject.lockMovementX} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30">
+                      <Copy size={15} className="mx-auto mb-0.5" />Duplicate
+                    </button>
+                    <button onClick={toggleLock} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold">
+                      <Lock size={15} className="mx-auto mb-0.5" />{activeObject.lockMovementX ? 'Unlock' : 'Lock'}
+                    </button>
+                    <button onClick={() => { activeCanvas?.discardActiveObject(); activeCanvas?.renderAll(); setActiveObject(null); }} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold">
+                      <X size={15} className="mx-auto mb-0.5" />Deselect
+                    </button>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-6 gap-1.5">
+                  {!viewingMode ? (
+                    <label className="py-2.5 rounded-xl bg-blue-600 text-white text-[10px] font-semibold text-center cursor-pointer">
+                      <Plus size={15} className="mx-auto mb-0.5" />Add
+                      <input type="file" multiple accept="image/*" className="hidden" onChange={handleCustomImport} />
+                    </label>
+                  ) : (
+                    <button onClick={() => setViewingMode(false)} className="py-2.5 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[10px] font-semibold">
+                      <EyeOff size={15} className="mx-auto mb-0.5" />Edit
+                    </button>
+                  )}
+                  {!viewingMode ? (
+                    <>
+                      <button onClick={() => activeCanvas?.undo()} disabled={!canUndo} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30"><Undo size={15} className="mx-auto mb-0.5" />Undo</button>
+                      <button onClick={() => activeCanvas?.redo()} disabled={!canRedo} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold disabled:opacity-30"><Redo size={15} className="mx-auto mb-0.5" />Redo</button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="py-2.5 rounded-xl bg-transparent" />
+                      <div className="py-2.5 rounded-xl bg-transparent" />
+                    </>
+                  )}
+                  <button onClick={() => setViewingMode((mode) => !mode)} className={`py-2.5 rounded-xl border text-[10px] font-semibold ${viewingMode ? 'bg-blue-500/15 border-blue-500/30 text-blue-400' : 'bg-neutral-900 border-neutral-800 text-neutral-300'}`}>
+                    {viewingMode ? <EyeOff size={15} className="mx-auto mb-0.5" /> : <Eye size={15} className="mx-auto mb-0.5" />}
+                    {viewingMode ? 'Viewing' : 'View'}
+                  </button>
+                  {!viewingMode ? (
+                    <button onClick={() => setMobileToolsOpen(true)} className="py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-[10px] font-semibold">
+                      <Settings size={15} className="mx-auto mb-0.5" />More
+                    </button>
+                  ) : (
+                    <div className="py-2.5 rounded-xl bg-transparent" />
+                  )}
+                  <button onClick={exportCustomPDF} disabled={!!cropSessionRef.current} className="py-2.5 rounded-xl bg-white text-black text-[10px] font-semibold disabled:opacity-30">
+                    <Download size={15} className="mx-auto mb-0.5" />Export
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
       )}
       {appMode === 'customisable' && mobileToolsOpen && (
-        <div className="xl:hidden fixed inset-0 z-[60] bg-black/60" onMouseDown={(e) => { if (e.currentTarget === e.target) setMobileToolsOpen(false); }}><div className="absolute inset-x-0 bottom-0 max-h-[82vh] overflow-y-auto rounded-t-3xl border-t border-neutral-700 bg-[#121212] shadow-2xl pb-[max(12px,env(safe-area-inset-bottom))]"><div className="sticky top-0 z-10 bg-[#121212] border-b border-neutral-800 px-4 py-3 flex items-center justify-between"><span className="text-sm font-semibold">Editor tools</span><button onClick={() => setMobileToolsOpen(false)} className="p-2 rounded-lg hover:bg-neutral-900"><X size={16} /></button></div>{activeObject ? <div className="p-4 space-y-5"><div className="grid grid-cols-2 gap-2">
-<button onClick={() => rotateActive(-90)} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs flex items-center justify-center gap-1"><RotateCcw size={14} /> Rotate Left</button>
-<button onClick={() => rotateActive(90)} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs flex items-center justify-center gap-1"><RotateCcw size={14} className="scale-x-[-1]" /> Rotate Right</button>
-</div><div className="grid grid-cols-2 gap-2"><button onClick={() => alignActive('left')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Left</button><button onClick={() => alignActive('centerH')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Center</button><button onClick={() => alignActive('right')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Right</button><button onClick={() => alignActive('top')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Top</button><button onClick={() => alignActive('centerV')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Middle</button><button onClick={() => alignActive('bottom')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-[10px]">Bottom</button></div><div className="grid grid-cols-2 gap-2"><button onClick={() => fitAllImages('contain')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fit All</button><button onClick={() => fitAllImages('cover')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fill All</button></div><div className="grid grid-cols-2 gap-2"><button onClick={() => centerAndScaleActive('contain')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fit page</button><button onClick={() => centerAndScaleActive('cover')} className="bg-neutral-900 border border-neutral-800 py-2 rounded text-xs">Fill page</button></div><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Proportional scaling</span><input type="checkbox" checked={activeObject.lockUniScaling !== false} onChange={toggleAspectRatioLock} className="accent-blue-500" /></label><div className="grid grid-cols-2 gap-3"><label className="bg-neutral-900 border border-neutral-800 rounded p-2"><span className="text-[10px] text-neutral-500 block mb-1">X</span><input type="number" value={Math.round(activeObject.left || 0)} onChange={(e) => handlePropertyChange('left', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label><label className="bg-neutral-900 border border-neutral-800 rounded p-2"><span className="text-[10px] text-neutral-500 block mb-1">Y</span><input type="number" value={Math.round(activeObject.top || 0)} onChange={(e) => handlePropertyChange('top', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label></div></div> : <div className="p-4 space-y-3"><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Smart snapping</span><input type="checkbox" checked={!!activeCanvas?.snapEnabled} onChange={() => toggleCanvasSetting('snapEnabled')} className="accent-blue-500" /></label><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">Keep inside page</span><input type="checkbox" checked={!!activeCanvas?.boundaryLock} onChange={() => toggleCanvasSetting('boundaryLock')} className="accent-blue-500" /></label><label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-lg px-3 py-2.5"><span className="text-xs">15° angle snapping</span><input type="checkbox" checked={!!activeCanvas?.angleSnapEnabled} onChange={() => toggleCanvasSetting('angleSnapEnabled')} className="accent-blue-500" /></label></div>}<div className="px-4 pb-4"><label className="text-xs text-neutral-500 block mb-2">File Name</label><input type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-700 rounded p-2 text-sm focus:outline-none focus:border-blue-500" /></div></div></div>
+        <div className="xl:hidden fixed inset-0 z-[60] bg-black/60" onMouseDown={(e) => { if (e.currentTarget === e.target) setMobileToolsOpen(false); }}>
+          <div className="absolute inset-x-0 bottom-0 max-h-[82vh] overflow-y-auto rounded-t-3xl border-t border-neutral-700 bg-[#121212] shadow-2xl pb-[max(12px,env(safe-area-inset-bottom))]">
+            <div className="sticky top-0 z-10 bg-[#121212] border-b border-neutral-800 px-4 py-3 flex items-center justify-between">
+              <div>
+                <span className="text-sm font-semibold">Editor tools</span>
+                <span className="block text-[10px] text-neutral-500 mt-0.5">{activeObject ? 'Selected image' : 'Canvas settings'}</span>
+              </div>
+              <button onClick={() => setMobileToolsOpen(false)} className="p-2 rounded-lg hover:bg-neutral-900"><X size={16} /></button>
+            </div>
+            {viewingMode ? (
+              <div className="p-5 space-y-3">
+                <button onClick={() => setViewingMode(false)} className="w-full py-3 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 text-sm font-semibold"><EyeOff size={17} className="inline mr-2" />Exit Viewing Mode</button>
+                <p className="text-xs text-neutral-500 text-center">Images and pages are read-only while viewing.</p>
+              </div>
+            ) : activeObject ? (
+              <div className="p-4 space-y-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => rotateActive(-90)} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5"><RotateCcw size={14} /> Rotate Left</button>
+                  <button onClick={() => rotateActive(90)} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5"><RotateCcw size={14} className="scale-x-[-1]" /> Rotate Right</button>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-neutral-500 tracking-wider mb-2">ALIGN</div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {['left','centerH','right','top','centerV','bottom'].map((mode) => (
+                      <button key={mode} onClick={() => alignActive(mode)} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-[10px]">
+                        {mode === 'centerH' ? 'Center' : mode === 'centerV' ? 'Middle' : mode[0].toUpperCase()+mode.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-neutral-500 tracking-wider mb-2">LAYOUT</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => fitAllImages('contain')} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs">Fit All</button>
+                    <button onClick={() => fitAllImages('cover')} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs">Fill All</button>
+                    <button onClick={() => centerAndScaleActive('contain')} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs">Fit page</button>
+                    <button onClick={() => centerAndScaleActive('cover')} className="bg-neutral-900 border border-neutral-800 py-2.5 rounded-xl text-xs">Fill page</button>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-neutral-500 tracking-wider mb-2">SCALING</div>
+                  <label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3">
+                    <span className="text-xs">Proportional scaling</span>
+                    <input type="checkbox" checked={activeObject.lockUniScaling !== false} onChange={toggleAspectRatioLock} className="accent-blue-500" />
+                  </label>
+                </div>
+                <div>
+                  <div className="text-[10px] font-bold text-neutral-500 tracking-wider mb-2">POSITION</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="bg-neutral-900 border border-neutral-800 rounded-xl p-2.5"><span className="text-[10px] text-neutral-500 block mb-1">X</span><input type="number" value={Math.round(activeObject.left || 0)} onChange={(e) => handlePropertyChange('left', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label>
+                    <label className="bg-neutral-900 border border-neutral-800 rounded-xl p-2.5"><span className="text-[10px] text-neutral-500 block mb-1">Y</span><input type="number" value={Math.round(activeObject.top || 0)} onChange={(e) => handlePropertyChange('top', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none" /></label>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 space-y-3">
+                <div className="text-[10px] font-bold text-neutral-500 tracking-wider">CANVAS</div>
+                <label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3">
+                  <span className="text-xs">Smart snapping</span>
+                  <input type="checkbox" checked={!!activeCanvas?.snapEnabled} onChange={() => toggleCanvasSetting('snapEnabled')} className="accent-blue-500" />
+                </label>
+                <label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3">
+                  <span className="text-xs">Keep inside page</span>
+                  <input type="checkbox" checked={!!activeCanvas?.boundaryLock} onChange={() => toggleCanvasSetting('boundaryLock')} className="accent-blue-500" />
+                </label>
+                <label className="flex items-center justify-between bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-3">
+                  <span className="text-xs">15° angle snapping</span>
+                  <input type="checkbox" checked={!!activeCanvas?.angleSnapEnabled} onChange={() => toggleCanvasSetting('angleSnapEnabled')} className="accent-blue-500" />
+                </label>
+              </div>
+            )}
+            <div className="px-4 pb-4">
+              <label className="text-xs text-neutral-500 block mb-2">File Name</label>
+              <input type="text" value={fileName} onChange={(e) => setFileName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-700 rounded-xl p-2.5 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          </div>
+        </div>
       )}
 
       {appMode === 'autofit' && (
