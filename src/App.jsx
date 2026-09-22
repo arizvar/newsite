@@ -1,5 +1,3 @@
-import bareenaIcon from './assets/bareena-icon.svg';
-import bareenaWordmark from './assets/bareenapdfs-wordmark.svg';
 import React, { useEffect, useRef, useState } from 'react';
 import { fabric } from 'fabric';
 import { jsPDF } from 'jspdf';
@@ -1502,8 +1500,8 @@ export default function App() {
       <main className="min-h-[100dvh] w-full bg-[#0a0a0a] text-neutral-200 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
           <div className="text-center mb-8 sm:mb-10">
-            <div className="mx-auto mb-3 h-14 w-14 rounded-2xl bg-neutral-950 border border-neutral-700 p-2 shadow-xl"><img src={bareenaIcon} alt="BareenaPDFs" className="h-full w-full object-contain" /></div>
-            <img src={bareenaWordmark} alt="BareenaPDFs" className="mx-auto h-auto w-[min(78vw,360px)] sm:w-[360px]" />
+            <div className="mx-auto mb-3 h-14 w-14 rounded-2xl bg-neutral-950 border border-neutral-700 p-2 shadow-xl"><img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="BareenaPDFs" className="h-full w-full object-contain" /></div>
+            <img src={`${import.meta.env.BASE_URL}bareenapdfs-wordmark.svg`} alt="BareenaPDFs" className="mx-auto h-auto w-[min(78vw,360px)] sm:w-[360px]" />
             <div className="mt-2 text-[10px] sm:text-xs font-semibold text-neutral-500 uppercase tracking-[0.22em]">made by ariz</div>
           </div>
 
