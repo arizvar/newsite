@@ -805,7 +805,7 @@ export default function App() {
         ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) &&
         activeCanvas &&
         activeObject &&
-        !activeObject.lockMovementX
+        (!activeObject.lockMovementX || !activeObject.lockMovementY)
       ) {
         activeCanvas.fire('object:modified', { target: activeObject });
       }
