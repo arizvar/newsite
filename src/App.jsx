@@ -140,74 +140,69 @@ const PageCanvas = ({
     setCanvasTouchMode(false);
 
     // On phones, normal finger movement should scroll the page.
-    // An object only becomes draggable after a deliberate 800ms hold.
-    const touchState = { timer: null, target: null, startX: 0, startY: 0, lastX: 0, lastY: 0, dragging: false };
-
-    // Let Fabric receive touches that land on resize/rotate controls.
-    // Our custom long-press drag handler must only take over touches on the
-    // object body; otherwise mobile scaling/cropping handles become unusable.
-    const isControlTouch = (point, target) => {
-      if (!point || !target) return false;
-
-      const active = initCanvas.getActiveObject();
-      if (active !== target) return false;
-
-      const canvasRect = initCanvas.upperCanvasEl.getBoundingClientRect();
-      const scaleX = canvasRect.width / Math.max(1, initCanvas.width);
-      const scaleY = canvasRect.height / Math.max(1, initCanvas.height);
-      const rect = target.getBoundingRect();
-
-      const corners = [
-        [rect.left, rect.top],
-        [rect.left + rect.width / 2, rect.top],
-        [rect.left + rect.width, rect.top],
-        [rect.left, rect.top + rect.height / 2],
-        [rect.left + rect.width, rect.top + rect.height / 2],
-        [rect.left, rect.top + rect.height],
-        [rect.left + rect.width / 2, rect.top + rect.height],
-        [rect.left + rect.width, rect.top + rect.height],
-      ];
-
-      const tolerance = 38;
-      const px = canvasRect.left + point.clientX - canvasRect.left;
-      const py = canvasRect.top + point.clientY - canvasRect.top;
-
-      if (corners.some(([x, y]) =>
-        Math.hypot(px - (canvasRect.left + x * scaleX), py - (canvasRect.top + y * scaleY)) <= tolerance
-      )) return true;
-
-      // Rotation handle sits above the top-center of the object.
-      const rotationX = canvasRect.left + (rect.left + rect.width / 2) * scaleX;
-      const rotationY = canvasRect.top + (rect.top - 30) * scaleY;
-      return Math.hypot(px - rotationX, py - rotationY) <= tolerance;
+    // An object only becomes draggable after a deliberate hold.
+    // Fabric remains fully in charge of resize/rotate gestures.
+    const touchState = {
+      timer: null,
+      target: null,
+      controlGesture: false,
+      startX: 0,
+      startY: 0,
+      lastX: 0,
+      lastY: 0,
+      dragging: false,
     };
 
     const clearTouchHold = () => {
       if (touchState.timer) window.clearTimeout(touchState.timer);
       touchState.timer = null;
     };
+
     const getTouchPoint = (e) => e.touches?.[0] || e.changedTouches?.[0];
 
-    const onTouchStart = (e) => {
-      if (initCanvas._isCropping || e.touches.length !== 1) return;
+    // Ask Fabric which control is actually under the finger instead of estimating
+    // from the object's bounding box. This is important for rotated objects and
+    // keeps Fabric's own scaling/rotation/crop gesture pipeline intact.
+    const getControlCorner = (e, target) => {
+      if (!target || initCanvas.getActiveObject() !== target) return null;
+      if (typeof initCanvas._findTargetCorner !== 'function') return null;
 
-      // Touch gestures are handled here so Fabric never creates a marquee-selection box.
-      initCanvas.selection = false;
+      try {
+        const pointer = initCanvas.getPointer(e, true);
+        return initCanvas._findTargetCorner(pointer, target);
+      } catch {
+        return null;
+      }
+    };
+
+    const onTouchStart = (e) => {
+      if (e.touches?.length !== 1) return;
+
+      // During crop mode the crop rectangle is a normal Fabric object.
+      // Never intercept any crop-editor touch here.
+      if (initCanvas._isCropping) return;
+
       const point = getTouchPoint(e);
       const target = initCanvas.findTarget(e);
+      const corner = getControlCorner(e, target);
 
-      // Resize/rotate controls belong to Fabric. Do not intercept these touches
-      // with the long-press movement system.
-      if (target && isControlTouch(point, target)) {
+      // Fabric owns resize + rotate controls. Keep the complete touch sequence
+      // untouched by our long-press mover, including touchmove and touchend.
+      if (target && corner) {
         clearTouchHold();
         touchState.target = null;
         touchState.dragging = false;
+        touchState.controlGesture = true;
         initCanvas.selection = true;
         setCanvasTouchMode(true);
         return;
       }
 
-      // Do not preventDefault: blank-page swipes must remain native page scrolling.
+      touchState.controlGesture = false;
+
+      // Touch gestures on the object body are handled here so a normal swipe
+      // over the object can still scroll, while a deliberate hold can move it.
+      initCanvas.selection = false;
       e.stopImmediatePropagation();
 
       if (!point || !target || target.isGuide || target.cropEditor) {
@@ -225,7 +220,7 @@ const PageCanvas = ({
       clearTouchHold();
 
       touchState.timer = window.setTimeout(() => {
-        if (!touchState.target) return;
+        if (!touchState.target || touchState.controlGesture) return;
         touchState.dragging = true;
         initCanvas.setActiveObject(touchState.target);
         onSetActive(initCanvas, touchState.target, page.id);
@@ -235,12 +230,14 @@ const PageCanvas = ({
     };
 
     const onTouchMove = (e) => {
-      if (e.touches.length !== 1) return;
+      if (touchState.controlGesture) return;
+      if (e.touches?.length !== 1) return;
+
       const point = getTouchPoint(e);
       if (!point) return;
 
       if (!touchState.target || !touchState.dragging) {
-        // Before the hold completes, the browser is free to scroll the workspace.
+        // Before the hold completes, the browser remains free to scroll.
         if (touchState.target && Math.hypot(point.clientX - touchState.startX, point.clientY - touchState.startY) > 8) {
           clearTouchHold();
           touchState.target = null;
@@ -265,6 +262,15 @@ const PageCanvas = ({
     };
 
     const onTouchEnd = (e) => {
+      // Never stop Fabric's touchend for a native control gesture.
+      if (touchState.controlGesture) {
+        touchState.controlGesture = false;
+        clearTouchHold();
+        touchState.target = null;
+        touchState.dragging = false;
+        return;
+      }
+
       e.stopImmediatePropagation();
       const target = touchState.target;
       const wasDragging = touchState.dragging;
