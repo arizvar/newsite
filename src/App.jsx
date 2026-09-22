@@ -37,34 +37,6 @@ const getObjectCenter = (obj) => obj.getCenterPoint();
 
 const safeFileName = (name, fallback = 'BareenaPDFs') => {
   const cleaned = String(name || '').trim().replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/\s+/g, ' ');
-  // BareenaPDFs mode chooser
-  if (!appMode) {
-    return (
-      <div className="min-h-screen w-full bg-[#0a0a0a] text-neutral-200 flex items-center justify-center px-5 py-8 sm:px-8">
-        <div className="w-full max-w-4xl">
-          <div className="text-center mb-8 sm:mb-10">
-            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">BareenaPDFs</h1>
-            <div className="text-[10px] sm:text-xs font-semibold text-neutral-500 uppercase tracking-[0.22em] mt-2">made by ariz</div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            {modeOptions.map(({ id, label, description, Icon, accent }) => {
-              const accentClasses = { blue: 'hover:border-blue-500/50 hover:bg-blue-500/5', emerald: 'hover:border-emerald-500/50 hover:bg-emerald-500/5', purple: 'hover:border-purple-500/50 hover:bg-purple-500/5', orange: 'hover:border-orange-500/50 hover:bg-orange-500/5' };
-              const iconClasses = { blue: 'bg-blue-500/10 text-blue-400 border-blue-500/15', emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/15', purple: 'bg-purple-500/10 text-purple-400 border-purple-500/15', orange: 'bg-orange-500/10 text-orange-400 border-orange-500/15' };
-              return (
-                <button key={id} onClick={() => setAppMode(id)} className={"group text-left rounded-2xl border border-neutral-800 bg-[#121212] p-5 sm:p-6 transition-all active:scale-[0.985] " + accentClasses[accent]}>
-                  <div className="h-28 sm:h-36 rounded-xl border border-neutral-800 bg-[#0c0c0c] mb-5 p-4 flex items-center justify-center overflow-hidden">
-                    <div className={"w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border flex items-center justify-center " + iconClasses[accent]}><Icon size={28} /></div>
-                  </div>
-                  <div className="flex items-center justify-between gap-3"><h2 className="text-base sm:text-lg font-bold text-white">{label}</h2><span className="text-neutral-600 group-hover:text-neutral-400 transition-colors">→</span></div>
-                  <p className="mt-2 text-xs sm:text-sm leading-relaxed text-neutral-500">{description}</p>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  }
   return (cleaned || fallback).replace(/\.pdf$/i, '');
 };
 
@@ -1381,8 +1353,82 @@ export default function App() {
   const displayedHeight = activeObject?.height ? Math.round(Math.abs(activeObject.height * (activeObject.scaleY || 1))) : 0;
   const selectedAngle = Math.round(activeObject?.angle || 0);
 
+  if (!appMode) {
+    return (
+      <main className="min-h-[100dvh] w-full bg-[#0a0a0a] text-neutral-200 overflow-y-auto">
+        <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
+          <div className="text-center mb-8 sm:mb-10">
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">BareenaPDFs</h1>
+            <div className="mt-2 text-[10px] sm:text-xs font-semibold text-neutral-500 uppercase tracking-[0.22em]">made by ariz</div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {modeOptions.map(({ id, label, description, Icon, accent }) => {
+              const card = {
+                blue: { border: 'hover:border-blue-500/50', icon: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+                emerald: { border: 'hover:border-emerald-500/50', icon: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+                purple: { border: 'hover:border-purple-500/50', icon: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
+                orange: { border: 'hover:border-orange-500/50', icon: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
+              }[accent];
+
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setAppMode(id)}
+                  className={`group w-full text-left rounded-2xl border border-neutral-800 bg-[#121212] p-4 sm:p-5 transition-all active:scale-[0.99] ${card.border}`}
+                >
+                  <div className="relative h-36 sm:h-44 rounded-xl border border-neutral-800 bg-[#0c0c0c] overflow-hidden flex items-center justify-center">
+                    {id === 'customisable' && (
+                      <div className="w-[42%] h-[78%] bg-white rounded-sm shadow-lg relative">
+                        <div className="absolute left-[13%] top-[17%] w-[50%] h-[24%] bg-neutral-200 rounded-sm" />
+                        <div className="absolute right-[12%] bottom-[15%] w-[35%] h-[30%] bg-neutral-300 rounded-sm" />
+                      </div>
+                    )}
+                    {id === 'autofit' && (
+                      <div className="flex gap-2 items-center">
+                        <div className="w-20 h-28 sm:w-24 sm:h-32 bg-white rounded-sm shadow-lg flex items-center justify-center"><div className="w-12 h-16 bg-neutral-200 rounded-sm" /></div>
+                        <div className="w-16 h-24 sm:w-20 sm:h-28 bg-neutral-800 border border-neutral-700 rounded-sm" />
+                      </div>
+                    )}
+                    {id === 'pdf2img' && (
+                      <div className="flex items-center gap-2">
+                        <div className="w-20 h-28 bg-white rounded-sm shadow-lg flex flex-col gap-1 p-2"><span className="h-1.5 w-full bg-neutral-300 rounded" /><span className="h-1.5 w-3/4 bg-neutral-300 rounded" /><span className="h-12 w-full bg-neutral-200 rounded mt-1" /></div>
+                        <span className="text-neutral-600 text-xl">→</span>
+                        <div className="w-20 h-20 bg-neutral-800 border border-neutral-700 rounded-lg flex items-center justify-center"><Icon size={26} className={card.icon.split(' ')[1]} /></div>
+                      </div>
+                    )}
+                    {id === 'merge' && (
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-22 sm:w-20 sm:h-28 bg-white rounded-sm shadow-lg" />
+                        <div className="w-16 h-22 sm:w-20 sm:h-28 bg-neutral-300 rounded-sm shadow-lg -ml-8 translate-y-2" />
+                        <span className="text-white text-xl ml-1">+</span>
+                        <div className="w-16 h-22 sm:w-20 sm:h-28 bg-neutral-800 border border-neutral-700 rounded-sm -ml-3" />
+                      </div>
+                    )}
+                    <div className={`absolute top-3 right-3 w-9 h-9 rounded-xl border flex items-center justify-center ${card.icon}`}>
+                      <Icon size={17} />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-bold text-white">{label}</h2>
+                      <p className="mt-1.5 text-xs sm:text-sm leading-relaxed text-neutral-500">{description}</p>
+                    </div>
+                    <span className="shrink-0 text-neutral-600 group-hover:text-neutral-300 text-xl transition-colors">→</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <div className="relative flex h-screen w-full bg-[#0a0a0a] font-sans text-neutral-200 overflow-hidden">
+    <div className="relative flex min-h-[100dvh] h-[100dvh] w-full min-w-0 bg-[#0a0a0a] font-sans text-neutral-200 overflow-hidden">
       <div className="lg:hidden absolute top-0 left-0 right-0 z-40 bg-[#121212]/95 backdrop-blur-xl border-b border-neutral-800">
         <div className="px-3 py-2.5 flex items-center gap-2">
           <button onClick={goToModes} className="p-2 -ml-1 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Back to modes"><LayoutTemplate size={16} /></button>
