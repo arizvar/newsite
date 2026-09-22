@@ -251,7 +251,29 @@ const PageCanvas = ({
       if (e.touches?.length !== 1) return;
 
       const touch = e.touches[0];
-      const target = initCanvas.findTarget(e);
+      const point = touchToCanvasPoint(touch);
+      let target = null;
+
+      try {
+        target = initCanvas.findTarget(e);
+      } catch {
+        target = null;
+      }
+
+      // Fallback to a direct object hit test. This makes selection reliable on
+      // mobile browsers where Fabric's touch-event target parsing can be flaky.
+      if (!target) {
+        const objects = initCanvas.getObjects().slice().reverse();
+        target = objects.find((obj) => {
+          if (!obj || obj.isGuide || obj.excludeFromExport) return false;
+          if (!obj.evented) return false;
+          try {
+            return obj.containsPoint(point);
+          } catch {
+            return false;
+          }
+        }) || null;
+      }
 
       // Never let Fabric's own touch transform start. We either handle the
       // object ourselves or leave the page completely native-scrollable.
@@ -735,11 +757,11 @@ const PageCanvas = ({
 
     setCanvas(initCanvas);
     return () => {
-      clearTouchHold();
-      initCanvas.upperCanvasEl?.removeEventListener('touchstart', onTouchStart, true);
-      initCanvas.upperCanvasEl?.removeEventListener('touchmove', onTouchMove, true);
-      initCanvas.upperCanvasEl?.removeEventListener('touchend', onTouchEnd, true);
-      initCanvas.upperCanvasEl?.removeEventListener('touchcancel', onTouchEnd, true);
+      clearMobileTouch();
+      initCanvas.upperCanvasEl?.removeEventListener('touchstart', onMobileTouchStart, true);
+      initCanvas.upperCanvasEl?.removeEventListener('touchmove', onMobileTouchMove, true);
+      initCanvas.upperCanvasEl?.removeEventListener('touchend', finishMobileTouch, true);
+      initCanvas.upperCanvasEl?.removeEventListener('touchcancel', finishMobileTouch, true);
       initCanvas.dispose();
     };
   }, [page.id, page.initialImage]);
