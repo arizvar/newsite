@@ -87,9 +87,9 @@ const PageCanvas = ({
         cornerSize: 12,
         padding: 0,
         borderDashArray: [4, 4],
-        lockUniScaling: true,
+        lockUniScaling: false,
         centeredRotation: true,
-        centeredScaling: true,
+        centeredScaling: false,
         touchCornerSize: 44,
       });
       fabric.Object.prototype._bareenaPDFsConfigured = true;
@@ -766,8 +766,8 @@ const PageCanvas = ({
           originY: 'center',
           scaleX: scale,
           scaleY: scale,
-          lockUniScaling: true,
-          centeredScaling: true,
+          lockUniScaling: false,
+          centeredScaling: false,
         });
         initCanvas.add(img);
         initCanvas.renderAll();
@@ -813,8 +813,8 @@ const PageCanvas = ({
         originY: 'center',
         scaleX: scale,
         scaleY: scale,
-        lockUniScaling: true,
-        centeredScaling: true,
+        lockUniScaling: false,
+        centeredScaling: false,
       });
       canvas.add(img);
       canvas.setActiveObject(img);
