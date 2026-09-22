@@ -139,169 +139,19 @@ const PageCanvas = ({
     };
     setCanvasTouchMode(false);
 
-    // On phones, normal finger movement should scroll the page.
-    // An object only becomes draggable after a deliberate hold.
-    // Fabric remains fully in charge of resize/rotate gestures.
-    const touchState = {
-      timer: null,
-      target: null,
-      controlGesture: false,
-      startX: 0,
-      startY: 0,
-      lastX: 0,
-      lastY: 0,
-      dragging: false,
+    // Use Fabric's native touch pipeline for object selection, dragging,
+    // resize handles, rotation, and crop editing. Fabric 5 already performs
+    // touch-aware control hit testing and transform handling.
+    //
+    // Keep the canvas touch action in browser-scroll mode so blank-page swipes
+    // can still scroll the workspace. Fabric handles the actual object
+    // transform once a touch lands on an editable object/control.
+    const setCanvasTouchMode = () => {
+      initCanvas.upperCanvasEl.style.touchAction = 'manipulation';
+      initCanvas.lowerCanvasEl.style.touchAction = 'manipulation';
+      initCanvas.wrapperEl.style.touchAction = 'manipulation';
     };
-
-    const clearTouchHold = () => {
-      if (touchState.timer) window.clearTimeout(touchState.timer);
-      touchState.timer = null;
-    };
-
-    const getTouchPoint = (e) => e.touches?.[0] || e.changedTouches?.[0];
-
-    // Ask Fabric which control is actually under the finger instead of estimating
-    // from the object's bounding box. This is important for rotated objects and
-    // keeps Fabric's own scaling/rotation/crop gesture pipeline intact.
-    const getControlCorner = (e, target) => {
-      if (!target || initCanvas.getActiveObject() !== target) return null;
-      if (typeof target._findTargetCorner !== 'function') return null;
-
-      try {
-        // Fabric 5 performs control hit-testing on the object itself.
-        const pointer = initCanvas.getPointer(e, true);
-        return target._findTargetCorner(pointer);
-      } catch {
-        return null;
-      }
-    };
-
-    const onTouchStart = (e) => {
-      if (e.touches?.length !== 1) return;
-
-      // During crop mode the crop rectangle is a normal Fabric object.
-      // Never intercept any crop-editor touch here.
-      if (initCanvas._isCropping) return;
-
-      const point = getTouchPoint(e);
-      const target = initCanvas.findTarget(e);
-      const corner = getControlCorner(e, target);
-
-      // Fabric owns resize + rotate controls. Keep the complete touch sequence
-      // untouched by our long-press mover, including touchmove and touchend.
-      if (target && corner) {
-        clearTouchHold();
-        touchState.target = null;
-        touchState.dragging = false;
-        touchState.controlGesture = true;
-        initCanvas.selection = true;
-        setCanvasTouchMode(true);
-        return;
-      }
-
-      touchState.controlGesture = false;
-
-      // Touch gestures on the object body are handled here so a normal swipe
-      // over the object can still scroll, while a deliberate hold can move it.
-      initCanvas.selection = false;
-      e.stopImmediatePropagation();
-
-      if (!point || !target || target.isGuide || target.cropEditor) {
-        clearTouchHold();
-        touchState.target = null;
-        touchState.dragging = false;
-        setCanvasTouchMode(false);
-        return;
-      }
-
-      touchState.target = target;
-      touchState.startX = touchState.lastX = point.clientX;
-      touchState.startY = touchState.lastY = point.clientY;
-      touchState.dragging = false;
-      clearTouchHold();
-
-      touchState.timer = window.setTimeout(() => {
-        if (!touchState.target || touchState.controlGesture) return;
-        touchState.dragging = true;
-        initCanvas.setActiveObject(touchState.target);
-        onSetActive(initCanvas, touchState.target, page.id);
-        setCanvasTouchMode(true);
-        initCanvas.renderAll();
-      }, 600);
-    };
-
-    const onTouchMove = (e) => {
-      if (touchState.controlGesture) return;
-      if (e.touches?.length !== 1) return;
-
-      const point = getTouchPoint(e);
-      if (!point) return;
-
-      if (!touchState.target || !touchState.dragging) {
-        // Before the hold completes, the browser remains free to scroll.
-        if (touchState.target && Math.hypot(point.clientX - touchState.startX, point.clientY - touchState.startY) > 8) {
-          clearTouchHold();
-          touchState.target = null;
-          initCanvas.selection = true;
-        }
-        return;
-      }
-
-      e.stopImmediatePropagation();
-      e.preventDefault();
-
-      const dx = point.clientX - touchState.lastX;
-      const dy = point.clientY - touchState.lastY;
-      touchState.lastX = point.clientX;
-      touchState.lastY = point.clientY;
-
-      if (!touchState.target.lockMovementX) touchState.target.left += dx / pageScale;
-      if (!touchState.target.lockMovementY) touchState.target.top += dy / pageScale;
-      touchState.target.setCoords();
-      initCanvas.constrainActiveObject?.(touchState.target);
-      initCanvas.renderAll();
-    };
-
-    const onTouchEnd = (e) => {
-      // Never stop Fabric's touchend for a native control gesture.
-      if (touchState.controlGesture) {
-        touchState.controlGesture = false;
-        clearTouchHold();
-        touchState.target = null;
-        touchState.dragging = false;
-        return;
-      }
-
-      e.stopImmediatePropagation();
-      const target = touchState.target;
-      const wasDragging = touchState.dragging;
-      clearTouchHold();
-
-      if (target && !wasDragging) {
-        // A normal tap selects the image; it must not require a long press.
-        initCanvas.setActiveObject(target);
-        onSetActive(initCanvas, target, page.id);
-      }
-
-      if (wasDragging && target) {
-        initCanvas.fire('object:modified', { target });
-      }
-
-      touchState.target = null;
-      touchState.dragging = false;
-      initCanvas.selection = true;
-      setCanvasTouchMode(!!initCanvas.getActiveObject());
-      initCanvas.renderAll();
-    };
-
-    initCanvas.upperCanvasEl.addEventListener('touchstart', onTouchStart, { capture: true, passive: true });
-    initCanvas.upperCanvasEl.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
-    initCanvas.upperCanvasEl.addEventListener('touchend', onTouchEnd, { capture: true, passive: true });
-    initCanvas.upperCanvasEl.addEventListener('touchcancel', onTouchEnd, { capture: true, passive: true });
-    initCanvas.upperCanvasEl.addEventListener('mousedown', () => {
-      initCanvas.selection = true;
-      setCanvasTouchMode(!!initCanvas.getActiveObject());
-    }, { capture: true });
+    setCanvasTouchMode();
 
     registerCanvas(page.id, initCanvas);
 
