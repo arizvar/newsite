@@ -127,7 +127,8 @@ const PageCanvas = ({
     initCanvas.boundaryLock = false;
     initCanvas.angleSnapEnabled = true;
     initCanvas.angleSnapStep = 15;
-    initCanvas.snapThreshold = 7;
+    // Keep positional snapping subtle so objects remain easy to place freely.
+    initCanvas.snapThreshold = 4;
     initCanvas._isCropping = false;
     initCanvas.targetFindTolerance = 10;
     initCanvas.perPixelTargetFind = false;
@@ -600,6 +601,8 @@ const PageCanvas = ({
       if (!obj || obj.isGuide || obj.cropEditor) return;
 
       const rect = obj.getBoundingRect();
+      const rectRight = rect.left + rect.width;
+      const rectBottom = rect.top + rect.height;
       let dx = 0;
       let dy = 0;
       const threshold = initCanvas.snapThreshold;
@@ -609,23 +612,25 @@ const PageCanvas = ({
       if (initCanvas.boundaryLock) {
         if (rect.width <= initCanvas.width) {
           if (rect.left < 0) dx = -rect.left;
-          else if (rect.right > initCanvas.width) dx = initCanvas.width - rect.right;
+          else if (rectRight > initCanvas.width) dx = initCanvas.width - rectRight;
         }
         if (rect.height <= initCanvas.height) {
           if (rect.top < 0) dy = -rect.top;
-          else if (rect.bottom > initCanvas.height) dy = initCanvas.height - rect.bottom;
+          else if (rectBottom > initCanvas.height) dy = initCanvas.height - rectBottom;
         }
       }
 
       if (initCanvas.snapEnabled) {
-        // All four page edges use exactly the same snap distance.
+        // Treat opposite edges symmetrically. In particular, use the object's
+        // right and bottom bounds so snapping works when it is aligned to the
+        // lower or right side of the page as well as the top or left side.
         // This works whether the object approaches from inside or slightly
         // crosses the page edge.
         const edgeDistances = [
           { axis: 'x', distance: Math.abs(rect.left), delta: -rect.left, guide: 0, addGuide: () => addVGuide(0) },
-          { axis: 'x', distance: Math.abs(initCanvas.width - rect.right), delta: initCanvas.width - rect.right, guide: initCanvas.width, addGuide: () => addVGuide(initCanvas.width) },
+          { axis: 'x', distance: Math.abs(initCanvas.width - rectRight), delta: initCanvas.width - rectRight, guide: initCanvas.width, addGuide: () => addVGuide(initCanvas.width) },
           { axis: 'y', distance: Math.abs(rect.top), delta: -rect.top, guide: 0, addGuide: () => addHGuide(0) },
-          { axis: 'y', distance: Math.abs(initCanvas.height - rect.bottom), delta: initCanvas.height - rect.bottom, guide: initCanvas.height, addGuide: () => addHGuide(initCanvas.height) },
+          { axis: 'y', distance: Math.abs(initCanvas.height - rectBottom), delta: initCanvas.height - rectBottom, guide: initCanvas.height, addGuide: () => addHGuide(initCanvas.height) },
         ];
 
         const xEdge = edgeDistances
@@ -654,23 +659,6 @@ const PageCanvas = ({
           addHGuide(initCanvas.height / 2);
         }
 
-        // Snap object center to page corners too, but only when close enough.
-        const corners = [
-          [0, 0],
-          [initCanvas.width, 0],
-          [0, initCanvas.height],
-          [initCanvas.width, initCanvas.height],
-        ];
-        for (const [cx, cy] of corners) {
-          const dist = Math.hypot(center.x - cx, center.y - cy);
-          if (dist <= threshold * 1.7) {
-            dx = cx - center.x;
-            dy = cy - center.y;
-            addVGuide(cx);
-            addHGuide(cy);
-            break;
-          }
-        }
       }
 
       if (dx || dy) obj.left += dx, obj.top += dy;
