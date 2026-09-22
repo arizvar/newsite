@@ -1502,8 +1502,8 @@ export default function App() {
       <main className="min-h-[100dvh] w-full bg-[#0a0a0a] text-neutral-200 overflow-y-auto">
         <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
           <div className="text-center mb-8 sm:mb-10">
-            <div className="mx-auto mb-3 h-14 w-14 rounded-2xl bg-neutral-950 border border-neutral-700 p-2 shadow-xl"><img src={`{bareenaIcon}`} alt="BareenaPDFs" className="h-full w-full object-contain" /></div>
-            <img src={`{bareenaWordmark}`} alt="BareenaPDFs" className="mx-auto h-auto w-[min(78vw,360px)] sm:w-[360px]" />
+            <div className="mx-auto mb-3 h-14 w-14 rounded-2xl bg-neutral-950 border border-neutral-700 p-2 shadow-xl"><img src={bareenaIcon} alt="BareenaPDFs" className="h-full w-full object-contain" /></div>
+            <img src={bareenaWordmark} alt="BareenaPDFs" className="mx-auto h-auto w-[min(78vw,360px)] sm:w-[360px]" />
             <div className="mt-2 text-[10px] sm:text-xs font-semibold text-neutral-500 uppercase tracking-[0.22em]">made by ariz</div>
           </div>
 
@@ -1577,8 +1577,8 @@ export default function App() {
       <div className="lg:hidden absolute top-0 left-0 right-0 z-40 bg-[#121212]/95 backdrop-blur-xl border-b border-neutral-800">
         <div className="px-3 py-2.5 flex items-center gap-2">
           <button onClick={goToModes} className="p-2 -ml-1 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Back to modes"><LayoutTemplate size={16} /></button>
-          <div className="h-9 w-9 shrink-0 rounded-xl bg-neutral-950 border border-neutral-700 p-1 shadow-lg"><img src={`{bareenaIcon}`} alt="" className="h-full w-full object-contain" /></div>
-          <div className="min-w-0 flex-1"><img src={`{bareenaWordmark}`} alt="BareenaPDFs" className="h-auto w-[132px] max-w-full" /><div className="text-[9px] font-semibold text-neutral-500 uppercase tracking-widest mt-1">made by ariz</div></div>
+          <div className="h-9 w-9 shrink-0 rounded-xl bg-neutral-950 border border-neutral-700 p-1 shadow-lg"><img src={bareenaIcon} alt="" className="h-full w-full object-contain" /></div>
+          <div className="min-w-0 flex-1"><img src={bareenaWordmark} alt="BareenaPDFs" className="h-auto w-[132px] max-w-full" /><div className="text-[9px] font-semibold text-neutral-500 uppercase tracking-widest mt-1">made by ariz</div></div>
           <button onClick={() => setMobileToolsOpen((open) => !open)} className="p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-neutral-300 active:scale-95" aria-label="Open tools"><Menu size={17} /></button>
         </div>
       </div>
@@ -1588,7 +1588,7 @@ export default function App() {
         <div>
           <div className="p-6">
             <div className="mb-6">
-              <button onClick={goToModes} className="block text-left hover:opacity-80 transition-opacity"><img src={`{bareenaWordmark}`} alt="BareenaPDFs" className="h-auto w-[190px] max-w-full" /></button>
+              <button onClick={goToModes} className="block text-left hover:opacity-80 transition-opacity"><img src={bareenaWordmark} alt="BareenaPDFs" className="h-auto w-[190px] max-w-full" /></button>
               <span className="text-[10px] font-semibold text-neutral-500 uppercase tracking-widest mt-1 block">made by ariz</span>
             </div>
 
