@@ -1676,7 +1676,7 @@ export default function App() {
 
       {/* CENTER WORKSPACE */}
       {appMode === 'customisable' && (
-        <div id="workspace-container" onMouseDown={handleWorkspaceClick} onTouchStart={handleWorkspaceClick} onDragOver={handleSectionDragOver} onDrop={handleSectionDrop} className="flex-1 min-w-0 w-full max-w-full bg-[#0a0a0a] overflow-x-hidden overflow-y-auto overscroll-contain p-2 sm:p-6 lg:p-10 pt-16 lg:pt-10 pb-28 lg:pb-10 flex flex-col items-center">
+        <div id="workspace-container" onMouseDown={handleWorkspaceClick} onTouchStart={handleWorkspaceClick} onDragOver={handleSectionDragOver} onDrop={handleSectionDrop} className="flex-1 min-h-0 min-w-0 w-full max-w-full bg-[#0a0a0a] overflow-x-hidden overflow-y-auto overscroll-contain p-2 sm:p-6 lg:p-10 pt-16 lg:pt-10 pb-28 lg:pb-10 flex flex-col items-center">
           <div id="workspace-spacer" className="w-full max-w-full flex flex-col items-center">
             {pages.map((page, index) => (
               <PageCanvas
@@ -1703,7 +1703,7 @@ export default function App() {
       )}
 
       {appMode === 'autofit' && (
-        <div className="flex-1 bg-[#0a0a0a] overflow-auto p-3 sm:p-6 lg:p-10 pt-24 lg:pt-10 pb-24 lg:pb-10 flex flex-col items-center" onDragOver={handleSectionDragOver} onDrop={handleSectionDrop}>
+        <div className="flex-1 min-h-0 bg-[#0a0a0a] overflow-auto p-3 sm:p-6 lg:p-10 pt-24 lg:pt-10 pb-24 lg:pb-10 flex flex-col items-center" onDragOver={handleSectionDragOver} onDrop={handleSectionDrop}>
           {autoFitImages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-neutral-500 text-center">
               <Maximize size={48} className="opacity-20 mb-4" />
@@ -1749,7 +1749,7 @@ export default function App() {
       )}
 
       {appMode === 'pdf2img' && (
-        <div className="flex-1 bg-[#0a0a0a] overflow-auto p-3 sm:p-6 lg:p-10 pt-24 lg:pt-10 pb-24 lg:pb-10 flex flex-col items-center" onDragOver={handleSectionDragOver} onDrop={handleSectionDrop}>
+        <div className="flex-1 min-h-0 bg-[#0a0a0a] overflow-auto p-3 sm:p-6 lg:p-10 pt-24 lg:pt-10 pb-24 lg:pb-10 flex flex-col items-center" onDragOver={handleSectionDragOver} onDrop={handleSectionDrop}>
           {pdfImages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-neutral-500 text-center animate-in fade-in duration-500">
               <FileText size={48} className="opacity-20 mb-4" />
@@ -1772,7 +1772,7 @@ export default function App() {
       )}
 
       {appMode === 'merge' && (
-        <div className="flex-1 bg-[#0a0a0a] overflow-auto p-3 sm:p-6 lg:p-10 pt-24 lg:pt-10 pb-24 lg:pb-10 flex flex-col items-center" onDragOver={handleSectionDragOver} onDrop={handleSectionDrop}>
+        <div className="flex-1 min-h-0 bg-[#0a0a0a] overflow-auto p-3 sm:p-6 lg:p-10 pt-24 lg:pt-10 pb-24 lg:pb-10 flex flex-col items-center" onDragOver={handleSectionDragOver} onDrop={handleSectionDrop}>
           {mergeFiles.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-neutral-500 text-center animate-in fade-in duration-500 px-6">
               <FilePlus2 size={48} className="opacity-20 mb-4" />
