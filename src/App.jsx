@@ -456,7 +456,25 @@ const PageCanvas = ({
     if (!canvas) return;
     const cssWidth = 600 * pageScale;
     const cssHeight = 848 * pageScale;
+
+    // Keep Fabric's wrapper and both drawing layers in the same scaled A4 box.
+    // Otherwise the wrapper can retain the old 600x848 size and shift/crop the page on phones.
     canvas.setDimensions({ width: cssWidth, height: cssHeight }, { cssOnly: true });
+    if (canvas.wrapperEl) {
+      canvas.wrapperEl.style.width = cssWidth + 'px';
+      canvas.wrapperEl.style.height = cssHeight + 'px';
+      canvas.wrapperEl.style.maxWidth = '100%';
+      canvas.wrapperEl.style.marginLeft = 'auto';
+      canvas.wrapperEl.style.marginRight = 'auto';
+    }
+    if (canvas.upperCanvasEl) {
+      canvas.upperCanvasEl.style.width = cssWidth + 'px';
+      canvas.upperCanvasEl.style.height = cssHeight + 'px';
+    }
+    if (canvas.lowerCanvasEl) {
+      canvas.lowerCanvasEl.style.width = cssWidth + 'px';
+      canvas.lowerCanvasEl.style.height = cssHeight + 'px';
+    }
     canvas.calcOffset();
     canvas.renderAll();
   }, [canvas, pageScale]);
@@ -492,7 +510,7 @@ const PageCanvas = ({
         </div>
       </div>
       <div className={`shadow-2xl transition-all ${isActivePage ? 'ring-4 ring-blue-500 shadow-blue-500/20' : 'ring-1 ring-neutral-800'}`} style={{ width: 600 * pageScale }}>
-        <canvas ref={canvasRef} className="touch-none select-none" style={{ display: 'block' }} />
+        <canvas ref={canvasRef} className="select-none" style={{ display: 'block' }} />
       </div>
     </div>
   );
@@ -1555,8 +1573,8 @@ export default function App() {
 
       {/* CENTER WORKSPACE */}
       {appMode === 'customisable' && (
-        <div id="workspace-container" onMouseDown={handleWorkspaceClick} onTouchStart={handleWorkspaceClick} onDragOver={handleSectionDragOver} onDrop={handleSectionDrop} className="flex-1 min-w-0 bg-[#0a0a0a] overflow-auto overscroll-contain p-2 sm:p-6 lg:p-10 pt-16 lg:pt-10 pb-28 lg:pb-10 flex flex-col items-center">
-          <div id="workspace-spacer" className="w-full max-w-[100vw] flex flex-col items-center">
+        <div id="workspace-container" onMouseDown={handleWorkspaceClick} onTouchStart={handleWorkspaceClick} onDragOver={handleSectionDragOver} onDrop={handleSectionDrop} className="flex-1 min-w-0 w-full max-w-full bg-[#0a0a0a] overflow-x-hidden overflow-y-auto overscroll-contain p-2 sm:p-6 lg:p-10 pt-16 lg:pt-10 pb-28 lg:pb-10 flex flex-col items-center">
+          <div id="workspace-spacer" className="w-full max-w-full flex flex-col items-center">
             {pages.map((page, index) => (
               <PageCanvas
                 key={page.id}
