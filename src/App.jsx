@@ -947,8 +947,37 @@ const PageCanvas = ({
 // ==========================================
 // MAIN APPLICATION
 // ==========================================
+const getModeFromPath = () => {
+  const path = window.location.pathname.replace(/\\/+$/, '') || '/';
+  const routes = {
+    '/customisable': 'customisable',
+    '/autofit': 'autofit',
+    '/pdf2img': 'pdf2img',
+    '/merge': 'merge',
+  };
+  return routes[path] || null;
+};
+
 export default function App() {
-  const [appMode, setAppMode] = useState(null);
+  const [appMode, setAppMode] = useState(() => getModeFromPath());
+
+  const navigateToMode = (mode) => {
+    const path = mode ? `/${mode}` : '/';
+    if (window.location.pathname !== path) {
+      window.history.pushState({ mode }, '', path);
+    }
+    setViewingMode(false);
+    setAppMode(mode);
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setViewingMode(false);
+      setAppMode(getModeFromPath());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const [pages, setPages] = useState([{ id: Date.now(), initialImage: null, orientation: 'portrait' }]);
   const canvasRefs = useRef({});
@@ -1014,7 +1043,7 @@ export default function App() {
     cropSessionRef.current = null;
     setMobileToolsOpen(false);
     setViewingMode(false);
-    setAppMode(null);
+    navigateToMode(null);
   };
 
   // Crop editor state.
@@ -1974,7 +2003,7 @@ export default function App() {
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setAppMode(id)}
+                  onClick={() => navigateToMode(id)}
                   className={`group w-full text-left rounded-2xl border border-neutral-800 bg-[#121212] p-4 sm:p-5 transition-all active:scale-[0.99] ${card.border}`}
                 >
                   <div className="relative h-36 sm:h-44 rounded-xl border border-neutral-800 bg-[#0c0c0c] overflow-hidden flex items-center justify-center">
@@ -2050,10 +2079,10 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-4 bg-neutral-900 p-1 rounded-lg border border-neutral-800 mb-6 relative">
-              <button onClick={() => setAppMode('customisable')} className={`flex flex-col items-center justify-center gap-1 py-2 text-[9px] sm:text-[10px] font-semibold rounded-md transition-all ${appMode === 'customisable' ? 'bg-blue-600 text-white shadow-lg' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}><LayoutTemplate size={14} /><span>Custom</span></button>
-              <button onClick={() => setAppMode('autofit')} className={`flex flex-col items-center justify-center gap-1 py-2 text-[9px] sm:text-[10px] font-semibold rounded-md transition-all ${appMode === 'autofit' ? 'bg-emerald-600 text-white shadow-lg' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}><Maximize size={14} /><span>Auto-Fit</span></button>
-              <button onClick={() => setAppMode('pdf2img')} className={`flex flex-col items-center justify-center gap-1 py-2 text-[9px] sm:text-[10px] font-semibold rounded-md transition-all ${appMode === 'pdf2img' ? 'bg-purple-600 text-white shadow-lg' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}><ImageIcon size={14} /><span>PDF → Img</span></button>
-              <button onClick={() => setAppMode('merge')} className={`flex flex-col items-center justify-center gap-1 py-2 text-[9px] sm:text-[10px] font-semibold rounded-md transition-all ${appMode === 'merge' ? 'bg-orange-600 text-white shadow-lg' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}><FilePlus2 size={14} /><span>Merge</span></button>
+              <button onClick={() => navigateToMode('customisable')} className={`flex flex-col items-center justify-center gap-1 py-2 text-[9px] sm:text-[10px] font-semibold rounded-md transition-all ${appMode === 'customisable' ? 'bg-blue-600 text-white shadow-lg' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}><LayoutTemplate size={14} /><span>Custom</span></button>
+              <button onClick={() => navigateToMode('autofit')} className={`flex flex-col items-center justify-center gap-1 py-2 text-[9px] sm:text-[10px] font-semibold rounded-md transition-all ${appMode === 'autofit' ? 'bg-emerald-600 text-white shadow-lg' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}><Maximize size={14} /><span>Auto-Fit</span></button>
+              <button onClick={() => navigateToMode('pdf2img')} className={`flex flex-col items-center justify-center gap-1 py-2 text-[9px] sm:text-[10px] font-semibold rounded-md transition-all ${appMode === 'pdf2img' ? 'bg-purple-600 text-white shadow-lg' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}><ImageIcon size={14} /><span>PDF → Img</span></button>
+              <button onClick={() => navigateToMode('merge')} className={`flex flex-col items-center justify-center gap-1 py-2 text-[9px] sm:text-[10px] font-semibold rounded-md transition-all ${appMode === 'merge' ? 'bg-orange-600 text-white shadow-lg' : 'text-neutral-400 hover:text-white hover:bg-neutral-800'}`}><FilePlus2 size={14} /><span>Merge</span></button>
             </div>
 
             {appMode === 'customisable' && (
